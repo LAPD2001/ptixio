@@ -1,9 +1,39 @@
-<canvas id="canvasMask"></canvas>
-<div id="count"></div>
-<select id="cameraSelect"></select>
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <title>BodyPix Camera or Screen</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    #canvasMask {
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+    #count {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      font-size: 22px;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 10px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
+<canvas id="canvasMask"></canvas>
+<div id="count">Loading...</div>
 
 <script>
 const video = document.createElement('video');
@@ -16,71 +46,68 @@ document.body.appendChild(video);
 const canvasMask = document.getElementById('canvasMask');
 const ctxMask = canvasMask.getContext('2d');
 const countDiv = document.getElementById('count');
-const cameraSelect = document.getElementById('cameraSelect');
-
-let net;
-let stream;
 
 window.onload = init;
 
 async function init() {
-  net = await bodyPix.load();
-  console.log("✅ BodyPix model loaded");
+  try {
+    const useScreen = confirm("Do you want to share your screen? Press 'Cancel' for camera.");
+    let stream;
 
-  await listCameras();
-  cameraSelect.addEventListener('change', async () => {
-    await startCamera(cameraSelect.value);
-  });
+    if (useScreen) {
+      // Screen sharing
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    } else {
+      // Προσπάθεια για πίσω κάμερα
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" } // "environment" = πίσω κάμερα
+        }
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    }
 
-  if (cameraSelect.options.length > 0) {
-    await startCamera(cameraSelect.value);
+    video.srcObject = stream;
+
+    // Περιμένουμε μέχρι να φορτωθούν διαστάσεις βίντεο
+    await new Promise(resolve => {
+      video.onloadedmetadata = () => {
+        video.play();
+        resolve();
+      };
+    });
+
+    const net = await bodyPix.load();
+    console.log("✅ BodyPix model loaded");
+
+    async function detect() {
+      const segmentation = await net.segmentMultiPerson(video, {
+        internalResolution: 'medium',
+        segmentationThreshold: 0.7
+      });
+
+      canvasMask.width = video.videoWidth;
+      canvasMask.height = video.videoHeight;
+      ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+
+      const mask = bodyPix.toMask(segmentation);
+      bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
+
+      const count = segmentation.length;
+      countDiv.textContent = `Number of people: ${count}`;
+
+      requestAnimationFrame(detect);
+    }
+
     detect();
+
+  } catch (err) {
+    console.error(err);
+    countDiv.textContent = "❌ Camera or screen access failed.";
   }
-}
-
-async function listCameras() {
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const videoDevices = devices.filter(d => d.kind === 'videoinput');
-
-  cameraSelect.innerHTML = '';
-  videoDevices.forEach(device => {
-    const option = document.createElement('option');
-    option.value = device.deviceId;
-    option.textContent = device.label || `Camera ${cameraSelect.length + 1}`;
-    cameraSelect.appendChild(option);
-  });
-}
-
-async function startCamera(deviceId) {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-  }
-
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { deviceId: { exact: deviceId } },
-    audio: false
-  });
-
-  video.srcObject = stream;
-  await video.play();
-}
-
-async function detect() {
-  const segmentation = await net.segmentMultiPerson(video, {
-    internalResolution: 'medium',
-    segmentationThreshold: 0.7
-  });
-
-  canvasMask.width = video.videoWidth;
-  canvasMask.height = video.videoHeight;
-  ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
-
-  const mask = bodyPix.toMask(segmentation);
-  bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
-
-  const count = segmentation.length;
-  countDiv.textContent = `Number of people: ${count}`;
-
-  requestAnimationFrame(detect);
 }
 </script>
+
+</body>
+</html>
