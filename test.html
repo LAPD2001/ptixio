@@ -1,6 +1,6 @@
 <canvas id="canvasMask"></canvas>
 <div id="count"></div>
-<button id="switch">Switch Camera</button>
+<select id="cameraSelect"></select>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
@@ -9,34 +9,37 @@
 const video = document.createElement('video');
 video.autoplay = true;
 video.playsInline = true;
-video.muted = true; // για κινητά
-video.style.display = 'none'; // δεν χρειάζεται να φαίνεται
+video.muted = true;
+video.style.display = 'none';
 document.body.appendChild(video);
 
 const canvasMask = document.getElementById('canvasMask');
 const ctxMask = canvasMask.getContext('2d');
 const countDiv = document.getElementById('count');
-const switchBtn = document.getElementById('switch');
+const cameraSelect = document.getElementById('cameraSelect');
 
 let net;
-let currentFacing = "user"; // ξεκινά με μπροστινή κάμερα
 let stream;
 
-// αρχικοποίηση
 window.onload = init;
 
 async function init() {
-  // Ρωτάει αν θέλει screen share
-  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' for the camera.");
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cameras = devices.filter(d => d.kind === 'videoinput');
 
-  if (useScreen) {
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  cameraSelect.innerHTML = cameras.map(
+    (cam, i) => `<option value="${cam.deviceId}">${cam.label || `Camera ${i+1}`}</option>`
+  ).join('');
+
+  cameraSelect.onchange = async () => {
+    await startCamera(cameraSelect.value);
+  };
+
+  if (cameras.length > 0) {
+    await startCamera(cameras[0].deviceId);
   } else {
-    stream = await getCameraStream(currentFacing);
+    alert("No cameras found!");
   }
-
-  video.srcObject = stream;
-  await video.play();
 
   net = await bodyPix.load();
   console.log("BodyPix model loaded");
@@ -44,27 +47,15 @@ async function init() {
   detect();
 }
 
-// επιστρέφει stream από κάμερα (μπροστινή ή πίσω)
-async function getCameraStream(facingMode) {
-  if (stream) {
-    const tracks = stream.getTracks();
-    tracks.forEach(t => t.stop());
-  }
-
-  return await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: facingMode } }
+async function startCamera(deviceId) {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { deviceId: { exact: deviceId } }
   });
-}
-
-// εναλλαγή κάμερας
-switchBtn.onclick = async () => {
-  currentFacing = currentFacing === "user" ? "environment" : "user";
-  stream = await getCameraStream(currentFacing);
   video.srcObject = stream;
   await video.play();
-};
+}
 
-// ανίχνευση και σχεδίαση
 async function detect() {
   const segmentation = await net.segmentMultiPerson(video, {
     internalResolution: 'medium',
