@@ -56,4 +56,16 @@ async function init() {
 
   detect();
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    console.log("Η σελίδα είναι κρυφή - σταματάει η ανίχνευση.");
+    countDiv.textContent = "Η ανίχνευση σταμάτησε γιατί η σελίδα είναι στο παρασκήνιο.";
+  } else {
+    console.log("Η σελίδα είναι ξανά ορατή - επανεκκίνηση.");
+    countDiv.textContent = "Επανεκκίνηση ανίχνευσης...";
+    requestAnimationFrame(detect);
+  }
+});
+
 </script>
