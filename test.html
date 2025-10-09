@@ -1,6 +1,6 @@
 <canvas id="canvasMask"></canvas>
 <div id="count"></div>
-<button id="switchBtn">Switch Camera</button>
+<button id="switch">Switch Camera</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
@@ -9,56 +9,62 @@
 const video = document.createElement('video');
 video.autoplay = true;
 video.playsInline = true;
-video.muted = true;
-video.style.display = 'none';
+video.muted = true; // για κινητά
+video.style.display = 'none'; // δεν χρειάζεται να φαίνεται
 document.body.appendChild(video);
 
 const canvasMask = document.getElementById('canvasMask');
 const ctxMask = canvasMask.getContext('2d');
 const countDiv = document.getElementById('count');
-const switchBtn = document.getElementById('switchBtn');
+const switchBtn = document.getElementById('switch');
 
 let net;
-let currentFacingMode = "user"; // ξεκινά με την μπροστινή
+let currentFacing = "user"; // ξεκινά με μπροστινή κάμερα
 let stream;
 
+// αρχικοποίηση
 window.onload = init;
 
 async function init() {
-  net = await bodyPix.load();
-  console.log("✅ BodyPix model loaded");
+  // Ρωτάει αν θέλει screen share
+  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' for the camera.");
 
-  await startCamera(currentFacingMode);
-  detect();
-
-  switchBtn.onclick = async () => {
-    currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
-    await startCamera(currentFacingMode);
-  };
-}
-
-async function startCamera(facingMode) {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-  }
-
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { exact: facingMode } },
-      audio: false
-    });
-  } catch (err) {
-    // Αν αποτύχει το exact (π.χ. σε Safari), δοκιμάζουμε απλό facingMode
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode },
-      audio: false
-    });
+  if (useScreen) {
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  } else {
+    stream = await getCameraStream(currentFacing);
   }
 
   video.srcObject = stream;
   await video.play();
+
+  net = await bodyPix.load();
+  console.log("BodyPix model loaded");
+
+  detect();
 }
 
+// επιστρέφει stream από κάμερα (μπροστινή ή πίσω)
+async function getCameraStream(facingMode) {
+  if (stream) {
+    const tracks = stream.getTracks();
+    tracks.forEach(t => t.stop());
+  }
+
+  return await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: facingMode } }
+  });
+}
+
+// εναλλαγή κάμερας
+switchBtn.onclick = async () => {
+  currentFacing = currentFacing === "user" ? "environment" : "user";
+  stream = await getCameraStream(currentFacing);
+  video.srcObject = stream;
+  await video.play();
+};
+
+// ανίχνευση και σχεδίαση
 async function detect() {
   const segmentation = await net.segmentMultiPerson(video, {
     internalResolution: 'medium',
