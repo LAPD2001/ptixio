@@ -28,7 +28,7 @@ window.onload = init;
 
 async function init() {
   // Ρωτάει αν θέλει screen share
-  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
+  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the the camera.");
 
   if (useScreen) {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
