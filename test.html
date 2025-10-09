@@ -11,7 +11,7 @@ const video = document.createElement('video');
 video.autoplay = true;
 video.playsInline = true;
 video.muted = true; // για κινητά
-video.style.display = 'none'; // δεν χρειάζεται να φαίνεται
+video.style.display = 'none';
 document.body.appendChild(video);
 
 const canvasMask = document.getElementById('canvasMask');
@@ -22,51 +22,81 @@ const switchBtn = document.getElementById('switch');
 let net;
 let currentFacing = "user"; // ξεκινά με μπροστινή κάμερα
 let stream;
+let usingScreen = false;
 
 // αρχικοποίηση
 window.onload = init;
 
 async function init() {
-  // Ρωτάει αν θέλει screen share
-  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
+  usingScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
 
-  if (useScreen) {
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  if (usingScreen) {
+    stream = await getScreenStream();
   } else {
     stream = await getCameraStream(currentFacing);
   }
 
-  video.srcObject = stream;
-  await video.play();
-
+  await setupVideo(stream);
   net = await bodyPix.load();
   console.log("BodyPix model loaded");
-
   detect();
 }
 
-// επιστρέφει stream από κάμερα (μπροστινή ή πίσω)
-async function getCameraStream(facingMode) {
+// φόρτωση stream στο video
+async function setupVideo(newStream) {
   if (stream) {
     const tracks = stream.getTracks();
     tracks.forEach(t => t.stop());
   }
 
-  return await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: facingMode } }
+  stream = newStream;
+  video.srcObject = stream;
+  await video.play();
+
+  // περιμένει να "ζωντανέψει" το video
+  await new Promise((resolve) => {
+    if (video.readyState >= 2) resolve();
+    else video.onloadeddata = () => resolve();
   });
+}
+
+// λήψη κάμερας
+async function getCameraStream(facingMode) {
+  return await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { ideal: facingMode },
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    }
+  });
+}
+
+// λήψη screen share
+async function getScreenStream() {
+  return await navigator.mediaDevices.getDisplayMedia({ video: true });
 }
 
 // εναλλαγή κάμερας
 switchBtn.onclick = async () => {
+  if (usingScreen) {
+    alert("Screen share is active. Reload the page to use the camera again.");
+    return;
+  }
+
   currentFacing = currentFacing === "user" ? "environment" : "user";
-  stream = await getCameraStream(currentFacing);
-  video.srcObject = stream;
-  await video.play();
+  console.log("Switching to:", currentFacing);
+
+  const newStream = await getCameraStream(currentFacing);
+  await setupVideo(newStream);
 };
 
 // ανίχνευση και σχεδίαση
 async function detect() {
+  if (!net || !video.videoWidth) {
+    requestAnimationFrame(detect);
+    return;
+  }
+
   const segmentation = await net.segmentMultiPerson(video, {
     internalResolution: 'medium',
     segmentationThreshold: 0.7
@@ -79,8 +109,7 @@ async function detect() {
   const mask = bodyPix.toMask(segmentation);
   bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
 
-  const count = segmentation.length;
-  countDiv.textContent = `Number of people: ${count}`;
+  countDiv.textContent = `Number of people: ${segmentation.length}`;
 
   requestAnimationFrame(detect);
 }
