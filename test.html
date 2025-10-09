@@ -1,86 +1,65 @@
-<canvas id="canvasMask"></canvas>
-<div id="count"></div>
-<select id="cameraSelect"></select>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Switch Camera Test</title>
+</head>
+<body>
+  <video id="video" autoplay playsinline style="width:100%; max-width:500px;"></video>
+  <br>
+  <select id="cameraSelect"></select>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
+  <script>
+    const video = document.getElementById('video');
+    const cameraSelect = document.getElementById('cameraSelect');
+    let currentStream = null;
 
-<script>
-const video = document.createElement('video');
-video.autoplay = true;
-video.playsInline = true;
-video.muted = true;
-video.style.display = 'none';
-document.body.appendChild(video);
+    async function getCameras() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      cameraSelect.innerHTML = '';
 
-const canvasMask = document.getElementById('canvasMask');
-const ctxMask = canvasMask.getContext('2d');
-const countDiv = document.getElementById('count');
-const cameraSelect = document.getElementById('cameraSelect');
+      videoDevices.forEach((device, index) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `Camera ${index + 1}`;
+        cameraSelect.appendChild(option);
+      });
+    }
 
-let net;
-let stream;
+    async function startCamera(deviceId) {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
 
-window.onload = init;
+      const constraints = {
+        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: false
+      };
 
-async function init() {
-  net = await bodyPix.load();
-  console.log("✅ BodyPix model loaded");
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = currentStream;
+      } catch (err) {
+        console.error('Camera error:', err);
+        alert('Σφάλμα: ' + err.message);
+      }
+    }
 
-  await listCameras();
-  cameraSelect.addEventListener('change', async () => {
-    await startCamera(cameraSelect.value);
-  });
+    cameraSelect.addEventListener('change', () => startCamera(cameraSelect.value));
 
-  if (cameraSelect.options.length > 0) {
-    await startCamera(cameraSelect.value);
-    detect();
-  }
-}
+    async function init() {
+      try {
+        await getCameras();
+        if (cameraSelect.options.length > 0) {
+          await startCamera(cameraSelect.value);
+        }
+      } catch (err) {
+        console.error('Init error:', err);
+      }
+    }
 
-async function listCameras() {
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const videoDevices = devices.filter(d => d.kind === 'videoinput');
-
-  cameraSelect.innerHTML = '';
-  videoDevices.forEach(device => {
-    const option = document.createElement('option');
-    option.value = device.deviceId;
-    option.textContent = device.label || `Camera ${cameraSelect.length + 1}`;
-    cameraSelect.appendChild(option);
-  });
-}
-
-async function startCamera(deviceId) {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-  }
-
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { deviceId: { exact: deviceId } },
-    audio: false
-  });
-
-  video.srcObject = stream;
-  await video.play();
-}
-
-async function detect() {
-  const segmentation = await net.segmentMultiPerson(video, {
-    internalResolution: 'medium',
-    segmentationThreshold: 0.7
-  });
-
-  canvasMask.width = video.videoWidth;
-  canvasMask.height = video.videoHeight;
-  ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
-
-  const mask = bodyPix.toMask(segmentation);
-  bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
-
-  const count = segmentation.length;
-  countDiv.textContent = `Number of people: ${count}`;
-
-  requestAnimationFrame(detect);
-}
-</script>
+    init();
+  </script>
+</body>
+</html>
