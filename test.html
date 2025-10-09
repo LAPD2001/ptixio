@@ -1,7 +1,6 @@
 <canvas id="canvasMask"></canvas>
 <div id="count"></div>
 <button id="switch">Switch Camera</button>
-1234
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
@@ -20,83 +19,66 @@ const countDiv = document.getElementById('count');
 const switchBtn = document.getElementById('switch');
 
 let net;
-let currentFacing = "user"; // ξεκινά με μπροστινή κάμερα
 let stream;
-let usingScreen = false;
+let useScreen = false;
+let cameras = [];
+let currentCameraIndex = 0;
 
 // αρχικοποίηση
 window.onload = init;
 
 async function init() {
-  usingScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
+  // Επιλογή screen share ή κάμερα
+  useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
 
-  if (usingScreen) {
-    stream = await getScreenStream();
+  if (!useScreen) {
+    await listCameras();
+    if (cameras.length === 0) {
+      alert("Δεν βρέθηκαν διαθέσιμες κάμερες.");
+      return;
+    }
+    await startCamera(cameras[currentCameraIndex].deviceId);
   } else {
-    stream = await getCameraStream(currentFacing);
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    video.srcObject = stream;
+    await video.play();
   }
 
-  await setupVideo(stream);
   net = await bodyPix.load();
   console.log("BodyPix model loaded");
+
+  switchBtn.onclick = async () => {
+    if (useScreen) return; // δεν αλλάζουμε κάμερα στο screen share
+    currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
+    await startCamera(cameras[currentCameraIndex].deviceId);
+  };
+
   detect();
 }
 
-// φόρτωση stream στο video
-async function setupVideo(newStream) {
+// Λίστα όλων των διαθέσιμων καμερών
+async function listCameras() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  cameras = devices.filter(d => d.kind === 'videoinput');
+}
+
+// Ξεκίνημα κάμερας με συγκεκριμένο deviceId
+async function startCamera(deviceId) {
   if (stream) {
-    const tracks = stream.getTracks();
-    tracks.forEach(t => t.stop());
+    stream.getTracks().forEach(track => track.stop());
   }
 
-  stream = newStream;
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { deviceId: { exact: deviceId } },
+    audio: false
+  });
+
   video.srcObject = stream;
   await video.play();
-
-  // περιμένει να "ζωντανέψει" το video
-  await new Promise((resolve) => {
-    if (video.readyState >= 2) resolve();
-    else video.onloadeddata = () => resolve();
-  });
 }
 
-// λήψη κάμερας
-async function getCameraStream(facingMode) {
-  return await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: { ideal: facingMode },
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    }
-  });
-}
-
-// λήψη screen share
-async function getScreenStream() {
-  return await navigator.mediaDevices.getDisplayMedia({ video: true });
-}
-
-// εναλλαγή κάμερας
-switchBtn.onclick = async () => {
-  if (usingScreen) {
-    alert("Screen share is active. Reload the page to use the camera again.");
-    return;
-  }
-
-  currentFacing = currentFacing === "user" ? "environment" : "user";
-  console.log("Switching to:", currentFacing);
-
-  const newStream = await getCameraStream(currentFacing);
-  await setupVideo(newStream);
-};
-
-// ανίχνευση και σχεδίαση
+// Συνάρτηση ανίχνευσης και σχεδίασης mask
 async function detect() {
-  if (!net || !video.videoWidth) {
-    requestAnimationFrame(detect);
-    return;
-  }
-
   const segmentation = await net.segmentMultiPerson(video, {
     internalResolution: 'medium',
     segmentationThreshold: 0.7
@@ -109,7 +91,8 @@ async function detect() {
   const mask = bodyPix.toMask(segmentation);
   bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
 
-  countDiv.textContent = `Number of people: ${segmentation.length}`;
+  const count = segmentation.length;
+  countDiv.textContent = `Number of people: ${count}`;
 
   requestAnimationFrame(detect);
 }
