@@ -1,6 +1,7 @@
 <canvas id="canvasMask"></canvas>
 <div id="count"></div>
 <button id="switch">Switch Camera</button>
+1234
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
@@ -27,7 +28,7 @@ window.onload = init;
 
 async function init() {
   // Ρωτάει αν θέλει screen share
-  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' for the camera.");
+  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
 
   if (useScreen) {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
