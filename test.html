@@ -20,7 +20,7 @@ window.onload = init;
 
 async function init() {
   // Επιλογή: οθόνη ή κάμερα
-  const useScreen = 0; //confirm("Do you want to share your screen? Press 'Cancel' for the camera.");
+  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' for the camera.");
 
   let stream;
   if (useScreen) {
