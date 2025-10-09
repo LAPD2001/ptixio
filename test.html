@@ -1,65 +1,105 @@
 <!DOCTYPE html>
-<html>
+<html lang="el">
 <head>
   <meta charset="UTF-8">
-  <title>Switch Camera Test</title>
+  <title>BodyPix Camera or Screen</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    #canvasMask {
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+    #count {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      font-size: 22px;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 10px;
+      border-radius: 10px;
+    }
+  </style>
 </head>
 <body>
-  <video id="video" autoplay playsinline style="width:100%; max-width:500px;"></video>
-  <br>
-  <select id="cameraSelect"></select>
 
-  <script>
-    const video = document.getElementById('video');
-    const cameraSelect = document.getElementById('cameraSelect');
-    let currentStream = null;
+<canvas id="canvasMask"></canvas>
+<div id="count">Loading...</div>
 
-    async function getCameras() {
+<script>
+const video = document.createElement('video');
+video.autoplay = true;
+video.playsInline = true;
+video.muted = true;
+video.style.display = 'none';
+document.body.appendChild(video);
+
+const canvasMask = document.getElementById('canvasMask');
+const ctxMask = canvasMask.getContext('2d');
+const countDiv = document.getElementById('count');
+
+window.onload = init;
+
+async function init() {
+  try {
+    const useScreen = confirm("Do you want to share your screen? Press 'Cancel' for camera.");
+    let stream;
+
+    if (useScreen) {
+      // Screen share
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    } else {
+      // Προσπάθεια εύρεσης πίσω κάμερας
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
-      cameraSelect.innerHTML = '';
-
-      videoDevices.forEach((device, index) => {
-        const option = document.createElement('option');
-        option.value = device.deviceId;
-        option.text = device.label || `Camera ${index + 1}`;
-        cameraSelect.appendChild(option);
-      });
-    }
-
-    async function startCamera(deviceId) {
-      if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-      }
-
+      const backCam = devices.find(d => d.kind === 'videoinput' && /back|rear|environment/i.test(d.label));
       const constraints = {
-        video: deviceId ? { deviceId: { exact: deviceId } } : true,
-        audio: false
+        video: backCam ? { deviceId: { exact: backCam.deviceId } } : { facingMode: 'environment' }
       };
-
-      try {
-        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-        video.srcObject = currentStream;
-      } catch (err) {
-        console.error('Camera error:', err);
-        alert('Σφάλμα: ' + err.message);
-      }
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
     }
 
-    cameraSelect.addEventListener('change', () => startCamera(cameraSelect.value));
+    video.srcObject = stream;
+    await video.play();
 
-    async function init() {
-      try {
-        await getCameras();
-        if (cameraSelect.options.length > 0) {
-          await startCamera(cameraSelect.value);
-        }
-      } catch (err) {
-        console.error('Init error:', err);
-      }
+    const net = await bodyPix.load();
+    console.log("✅ BodyPix model loaded");
+
+    async function detect() {
+      const segmentation = await net.segmentMultiPerson(video, {
+        internalResolution: 'medium',
+        segmentationThreshold: 0.7
+      });
+
+      canvasMask.width = video.videoWidth;
+      canvasMask.height = video.videoHeight;
+      ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+
+      const mask = bodyPix.toMask(segmentation);
+      bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
+
+      const count = segmentation.length;
+      countDiv.textContent = `Number of people: ${count}`;
+
+      requestAnimationFrame(detect);
     }
 
-    init();
-  </script>
+    detect();
+
+  } catch (err) {
+    console.error(err);
+    countDiv.textContent = "❌ Camera or screen access failed.";
+  }
+}
+</script>
+
 </body>
 </html>
