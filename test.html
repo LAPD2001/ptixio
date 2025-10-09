@@ -1,6 +1,7 @@
 <canvas id="canvasMask"></canvas>
 <div id="count"></div>
 <button id="switch">Switch Camera</button>
+1234
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
@@ -9,8 +10,8 @@
 const video = document.createElement('video');
 video.autoplay = true;
 video.playsInline = true;
-video.muted = true;
-video.style.display = 'none';
+video.muted = true; // για κινητά
+video.style.display = 'none'; // δεν χρειάζεται να φαίνεται
 document.body.appendChild(video);
 
 const canvasMask = document.getElementById('canvasMask');
@@ -19,76 +20,53 @@ const countDiv = document.getElementById('count');
 const switchBtn = document.getElementById('switch');
 
 let net;
+let currentFacing = "user"; // ξεκινά με μπροστινή κάμερα
 let stream;
-let cameras = [];
-let currentCameraIndex = 0;
 
-// Εκκίνηση
+// αρχικοποίηση
 window.onload = init;
 
 async function init() {
-  try {
-    // Ζήτα άδεια κάμερας για να εμφανιστούν τα labels
-    await navigator.mediaDevices.getUserMedia({ video: true });
+  // Ρωτάει αν θέλει screen share
+  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
 
-    // Πάρε όλες τις διαθέσιμες κάμερες
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    cameras = devices.filter(d => d.kind === 'videoinput');
-
-    if (cameras.length === 0) {
-      alert("No cameras found!");
-      return;
-    }
-
-    // Ξεκινάμε με την πίσω αν υπάρχει
-    const backCamIndex = cameras.findIndex(d =>
-      /back|rear|environment/i.test(d.label)
-    );
-    currentCameraIndex = backCamIndex >= 0 ? backCamIndex : 0;
-
-    await startCamera(cameras[currentCameraIndex].deviceId);
-
-    net = await bodyPix.load();
-    console.log("✅ BodyPix model loaded");
-
-    detect();
-  } catch (err) {
-    console.error("Init error:", err);
-    countDiv.textContent = "❌ Camera access failed.";
+  if (useScreen) {
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  } else {
+    stream = await getCameraStream(currentFacing);
   }
-}
-
-// Εκκίνηση κάμερας με συγκεκριμένο deviceId
-async function startCamera(deviceId) {
-  if (stream) {
-    stream.getTracks().forEach(t => t.stop());
-  }
-
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { deviceId: { exact: deviceId } },
-    audio: false
-  });
 
   video.srcObject = stream;
   await video.play();
-  console.log("🎥 Using camera:", deviceId);
+
+  net = await bodyPix.load();
+  console.log("BodyPix model loaded");
+
+  detect();
 }
 
-// Εναλλαγή κάμερας
-switchBtn.onclick = async () => {
-  if (cameras.length < 2) {
-    alert("Only one camera detected.");
-    return;
+// επιστρέφει stream από κάμερα (μπροστινή ή πίσω)
+async function getCameraStream(facingMode) {
+  if (stream) {
+    const tracks = stream.getTracks();
+    tracks.forEach(t => t.stop());
   }
 
-  currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
-  await startCamera(cameras[currentCameraIndex].deviceId);
+  return await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: facingMode } }
+  });
+}
+
+// εναλλαγή κάμερας
+switchBtn.onclick = async () => {
+  currentFacing = currentFacing === "user" ? "environment" : "user";
+  stream = await getCameraStream(currentFacing);
+  video.srcObject = stream;
+  await video.play();
 };
 
-// Ανίχνευση και σχεδίαση
+// ανίχνευση και σχεδίαση
 async function detect() {
-  if (!net) return;
-
   const segmentation = await net.segmentMultiPerson(video, {
     internalResolution: 'medium',
     segmentationThreshold: 0.7
