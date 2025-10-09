@@ -1,5 +1,7 @@
 <canvas id="canvasMask"></canvas>
 <div id="count"></div>
+<button id="switch">Switch Camera</button>
+1234
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
@@ -9,51 +11,77 @@ const video = document.createElement('video');
 video.autoplay = true;
 video.playsInline = true;
 video.muted = true; // για κινητά
-video.style.display = 'none'; // το κρύβουμε, δεν χρειάζεται να φανεί
+video.style.display = 'none'; // δεν χρειάζεται να φαίνεται
 document.body.appendChild(video);
 
 const canvasMask = document.getElementById('canvasMask');
 const ctxMask = canvasMask.getContext('2d');
 const countDiv = document.getElementById('count');
+const switchBtn = document.getElementById('switch');
 
+let net;
+let currentFacing = "user"; // ξεκινά με μπροστινή κάμερα
+let stream;
+
+// αρχικοποίηση
 window.onload = init;
 
 async function init() {
-  // Επιλογή: οθόνη ή κάμερα
-  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' for the camera.");
+  // Ρωτάει αν θέλει screen share
+  const useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
 
-  let stream;
   if (useScreen) {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
   } else {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    stream = await getCameraStream(currentFacing);
   }
 
   video.srcObject = stream;
   await video.play();
 
-  const net = await bodyPix.load();
+  net = await bodyPix.load();
   console.log("BodyPix model loaded");
 
-  async function detect() {
-    const segmentation = await net.segmentMultiPerson(video, {
-      internalResolution: 'medium',
-      segmentationThreshold: 0.7
-    });
+  detect();
+}
 
-    canvasMask.width = video.videoWidth;
-    canvasMask.height = video.videoHeight;
-    ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
-
-    const mask = bodyPix.toMask(segmentation);
-    bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
-
-    const count = segmentation.length;
-    countDiv.textContent = `Number of people: ${count}`;
-
-    requestAnimationFrame(detect);
+// επιστρέφει stream από κάμερα (μπροστινή ή πίσω)
+async function getCameraStream(facingMode) {
+  if (stream) {
+    const tracks = stream.getTracks();
+    tracks.forEach(t => t.stop());
   }
 
-  detect();
+  return await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: facingMode } }
+  });
+}
+
+// εναλλαγή κάμερας
+switchBtn.onclick = async () => {
+  currentFacing = currentFacing === "user" ? "environment" : "user";
+  stream = await getCameraStream(currentFacing);
+  video.srcObject = stream;
+  await video.play();
+};
+
+// ανίχνευση και σχεδίαση
+async function detect() {
+  const segmentation = await net.segmentMultiPerson(video, {
+    internalResolution: 'medium',
+    segmentationThreshold: 0.7
+  });
+
+  canvasMask.width = video.videoWidth;
+  canvasMask.height = video.videoHeight;
+  ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+
+  const mask = bodyPix.toMask(segmentation);
+  bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
+
+  const count = segmentation.length;
+  countDiv.textContent = `Number of people: ${count}`;
+
+  requestAnimationFrame(detect);
 }
 </script>
