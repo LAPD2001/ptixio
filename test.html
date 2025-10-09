@@ -24,17 +24,34 @@ let stream;
 window.onload = init;
 
 async function init() {
-  net = await bodyPix.load();
-  console.log("✅ BodyPix model loaded");
+  try {
+    net = await bodyPix.load();
+    console.log("✅ BodyPix model loaded");
 
-  await listCameras();
-  cameraSelect.addEventListener('change', async () => {
-    await startCamera(cameraSelect.value);
-  });
+    // Πρώτα ζητάμε άδεια κάμερας για να μπορέσουμε να δούμε labels
+    await navigator.mediaDevices.getUserMedia({ video: true });
+    await listCameras();
 
-  if (cameraSelect.options.length > 0) {
-    await startCamera(cameraSelect.value);
+    cameraSelect.addEventListener('change', async () => {
+      await startCamera(cameraSelect.value);
+    });
+
+    // Προσπάθεια να βρούμε την πίσω κάμερα
+    let backCam = Array.from(cameraSelect.options).find(opt =>
+      /back|rear|environment/i.test(opt.textContent)
+    );
+
+    if (backCam) {
+      await startCamera(backCam.value);
+      cameraSelect.value = backCam.value;
+    } else if (cameraSelect.options.length > 0) {
+      await startCamera(cameraSelect.value);
+    }
+
     detect();
+  } catch (err) {
+    console.error("Camera init error:", err);
+    countDiv.textContent = "❌ Camera access failed.";
   }
 }
 
@@ -43,10 +60,10 @@ async function listCameras() {
   const videoDevices = devices.filter(d => d.kind === 'videoinput');
 
   cameraSelect.innerHTML = '';
-  videoDevices.forEach(device => {
+  videoDevices.forEach((device, i) => {
     const option = document.createElement('option');
     option.value = device.deviceId;
-    option.textContent = device.label || `Camera ${cameraSelect.length + 1}`;
+    option.textContent = device.label || `Camera ${i + 1}`;
     cameraSelect.appendChild(option);
   });
 }
@@ -56,11 +73,11 @@ async function startCamera(deviceId) {
     stream.getTracks().forEach(track => track.stop());
   }
 
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { deviceId: { exact: deviceId } },
-    audio: false
-  });
+  const constraints = deviceId
+    ? { video: { deviceId: { exact: deviceId } } }
+    : { video: { facingMode: { ideal: "environment" } } };
 
+  stream = await navigator.mediaDevices.getUserMedia(constraints);
   video.srcObject = stream;
   await video.play();
 }
