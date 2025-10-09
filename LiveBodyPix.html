@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8" />
+  <title>Live Stream BodyPix - Multi Person</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+  <!-- <script src ="LiveBodyPix.js" defer></script>  -->
+   <script src ="LiveBodyPix.js" defer></script> 
+
+
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding-top: 20px;
+    }
+    video, canvas {
+      border: 1px solid black;
+    }
+    #count {
+      font-size: 24px;
+      font-weight: bold;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    canvas {
+      display: block;
+    }
+    #video, #canvasMask {
+      width: 480px;
+      height: 360px;
+      border: 1px solid black;
+    }
+
+
+  </style>
+</head>
+<body>
+
+  <div id="videoContainer" style="position: relative; display: inline-block;">
+    <video id="video" autoplay muted playsinline style="display: block;"></video>
+    <canvas id="canvasMask" ></canvas>
+  </div>
+
+  <div id="count">Number of people: 0</div>
+  <button id="reloadBtn">Επαναφόρτωση Βίντεο</button>
+
+</body>
+</html>
