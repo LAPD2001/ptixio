@@ -66,6 +66,7 @@ async function init() {
 
 // λήψη λίστας καμερών
 async function listCameras() {
+    await navigator.mediaDevices.getUserMedia({ video: true });
   const devices = await navigator.mediaDevices.enumerateDevices();
   cameras = devices.filter(d => d.kind === 'videoinput');
   cameraSelect.innerHTML = '';
