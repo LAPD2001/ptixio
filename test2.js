@@ -126,15 +126,6 @@ async function createCameraBlock(camera, index) {
 async function detectLoop(video, canvas, countDiv) {
   const ctx = canvas.getContext('2d');
 
-  // Περιμένουμε το video να έχει data
-  await new Promise(resolve => {
-    if (video.readyState >= 2) {
-      resolve();
-    } else {
-      video.onloadeddata = () => resolve();
-    }
-  });
-
   async function detect() {
     if (!video.videoWidth) {
       requestAnimationFrame(detect);
@@ -143,7 +134,6 @@ async function detectLoop(video, canvas, countDiv) {
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     try {
       const segmentation = await net.segmentMultiPerson(video, {
@@ -151,13 +141,8 @@ async function detectLoop(video, canvas, countDiv) {
         segmentationThreshold: 0.7
       });
 
-      if (segmentation && segmentation.length > 0) {
-        const mask = bodyPix.toMask(segmentation);
-        bodyPix.drawMask(canvas, video, mask, 0.6, 3, false);
-      } else {
-        // Αν δεν υπάρχουν άνθρωποι, απλά σχεδιάζουμε το video
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
+      const mask = bodyPix.toMask(segmentation);
+      bodyPix.drawMask(canvas, video, mask, 0.6, 3, false);
 
       const count = segmentation.length;
       countDiv.textContent = `People: ${count}`;
@@ -170,4 +155,3 @@ async function detectLoop(video, canvas, countDiv) {
 
   detect();
 }
-
