@@ -1,131 +1,10 @@
-// test-overlay-fixed.js
+// --- Global additions near the top of το script ---
+let feedBuffers = [];   // offscreen buffers για κάθε feed
+let singleBuffer = null; // buffer για single video
+let lastSegTime = 0;
+const SEG_INTERVAL = 120; // ms (δοκίμασε 120-250 για σταθερότητα)
 
-const video = document.createElement('video');
-video.autoplay = true;
-video.playsInline = true;
-video.muted = true;
-// δεν κρύβουμε πια το single video — θα το εμφανίσουμε στο wrapper
-video.style.display = 'block';
-video.style.width = '100%';
-video.style.height = 'auto';
-video.style.zIndex = '1';
-document.body.appendChild(video);
-
-const canvasMask = document.getElementById('canvasMask');
-const ctxMask = canvasMask.getContext('2d');
-const countDiv = document.getElementById('count');
-const cameraSelect = document.getElementById('cameraSelect');
-const cameraContainer = document.getElementById('cameraContainer');
-const logDiv = document.getElementById('log');
-
-let net;
-let stream; // single camera / screen
-let useScreen = false;
-let cameras = [];
-
-// πολλαπλά feeds
-let feedVideos = [];
-let feedCanvases = [];
-let feedStreams = [];
-let feedBadges = [];
-
-// wrapper για single feed (θα βάλει video + canvas μαζί)
-let singleWrapper = null;
-
-function log(msg) {
-  console.log(msg);
-  if (logDiv) {
-    logDiv.textContent += msg + "\n";
-    logDiv.scrollTop = logDiv.scrollHeight;
-  }
-}
-
-window.onload = init;
-
-async function init() {
-  useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
-
-  await listCameras();
-
-  // Προσθήκη "All cameras"
-  const allOption = document.createElement('option');
-  allOption.value = 'all';
-  allOption.textContent = 'All cameras';
-  cameraSelect.insertBefore(allOption, cameraSelect.firstChild);
-
-  if (useScreen) {
-    log("📺 Using screen share...");
-    try { await startScreen(); } catch (e) { log("❌ Screen share failed: " + e.message); return; }
-    cameraSelect.disabled = true;
-  } else {
-    if (cameras.length === 0) { alert("Δεν βρέθηκαν διαθέσιμες κάμερες."); return; }
-    await startCamera(cameras[0].deviceId);
-  }
-
-  cameraSelect.onchange = async () => {
-    const value = cameraSelect.value;
-    if (useScreen) return;
-    if (value === 'all') await startAllCameras();
-    else await startCamera(value);
-  };
-
-  net = await bodyPix.load();
-  log("✅ BodyPix model loaded");
-
-  if (!useScreen && cameraSelect.value !== 'all') detect();
-  else if (useScreen) detect();
-}
-
-async function listCameras() {
-  try { await navigator.mediaDevices.getUserMedia({ video: true }); } catch (e) { log("⚠️ getUserMedia permission: " + e.message); }
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  cameras = devices.filter(d => d.kind === 'videoinput');
-  cameraSelect.innerHTML = '';
-
-  cameras.forEach((device, index) => {
-    const option = document.createElement('option');
-    option.value = device.deviceId;
-    option.textContent = device.label || `Camera ${index + 1}`;
-    cameraSelect.appendChild(option);
-  });
-
-  if (cameras.length > 0) {
-    log("📷 Found " + cameras.length + " camera(s)");
-    cameras.forEach((c, i) => log(`   ${i + 1}. ${c.label || c.deviceId}`));
-  } else log("⚠️ No cameras found");
-}
-
-function ensureSingleWrapper() {
-  if (singleWrapper) return singleWrapper;
-  // δημιουργούμε wrapper και τοποθετούμε video + canvasMask μέσα
-  singleWrapper = document.createElement('div');
-  singleWrapper.id = 'singleWrapper';
-  singleWrapper.style.position = 'relative';
-  singleWrapper.style.display = 'inline-block';
-  singleWrapper.style.width = '640px';
-  singleWrapper.style.maxWidth = '100%';
-  singleWrapper.style.background = '#000';
-  singleWrapper.style.padding = '4px';
-  // το video element ήδη υπάρχει — το μεταφέρουμε μέσα
-  singleWrapper.appendChild(video);
-  // μεταφέρουμε canvasMask μέσα
-  singleWrapper.appendChild(canvasMask);
-
-  // style του canvasMask ώστε να κάθεται πάνω στο video
-  canvasMask.style.position = 'absolute';
-  canvasMask.style.left = '4px';
-  canvasMask.style.top = '4px';
-  canvasMask.style.pointerEvents = 'none';
-  canvasMask.style.zIndex = '2';
-  canvasMask.style.background = 'transparent';
-  canvasMask.style.width = 'calc(100% - 8px)';
-  canvasMask.style.height = 'auto';
-
-  // τοποθετούμε τον wrapper πριν το cameraContainer
-  cameraContainer.parentNode.insertBefore(singleWrapper, cameraContainer);
-  return singleWrapper;
-}
-
+// --- startCamera (αντικατάσταση / ενημέρωση) ---
 async function startCamera(deviceId) {
   stopAllFeeds();
   try {
@@ -133,150 +12,40 @@ async function startCamera(deviceId) {
     video.srcObject = stream;
     await video.play();
 
-// --- στο startCamera μετά το await video.play() βάλε:
-await new Promise(resolve => {
-  if (video.readyState >= 1 && video.videoWidth) resolve();
-  else video.onloadedmetadata = () => resolve();
-});
-canvasMask.width = video.videoWidth;
-canvasMask.height = video.videoHeight;
-canvasMask.style.width = video.clientWidth + 'px';
-canvasMask.style.height = video.clientHeight + 'px';
-canvasMask.style.position = 'absolute';
-canvasMask.style.left = '4px';
-canvasMask.style.top = '4px';
-canvasMask.style.zIndex = '2';
-canvasMask.style.pointerEvents = 'none';
-canvasMask.style.background = 'transparent';
+    ensureSingleWrapper(); // όπως πριν: βάζει video+canvasMask σε wrapper
 
-// --- στο startAllCameras, μετά το await v.play() και μετά το onloadedmetadata:
-c.width = v.videoWidth;
-c.height = v.videoHeight;
-// ΟΧΙ: c.style.width/height ανά frame. Ορισμένα css μεγέθη μπορείς να ορίσεις εδώ αν χρειάζεται.
-// π.χ.
-// c.style.width = v.clientWidth + 'px';
-// c.style.height = v.clientHeight + 'px';
-
-// ------------------------
-// Throttle / timed detection (δε βάζουμε segmentation σε κάθε requestAnimationFrame)
-// global timing control
-let lastSegTime = 0;
-const SEG_INTERVAL = 100; // ms -> ~10fps
-
-async function detect() {
-  if (!net || !video.videoWidth) {
-    requestAnimationFrame(detect);
-    return;
-  }
-
-  const now = performance.now();
-  if (now - lastSegTime >= SEG_INTERVAL) {
-    lastSegTime = now;
-    try {
-      const segmentation = await net.segmentMultiPerson(video, {
-        internalResolution: 'medium',
-        segmentationThreshold: 0.7
-      });
-
-      // Δημιουργούμε μάσκα με διαφανές back και ημιδιαφανές foreground
-      const mask = bodyPix.toMask(segmentation, {r:0,g:255,b:0,a:120}, {r:0,g:0,b:0,a:0});
-
-      // Σιγουρευόμαστε ΟΤΙ ΤΑ PIXEL DIMENSIONS ΔΕΝ ΑΛΛΑΖΟΥΝ ΕΔΩ
-      // (έχουν τεθεί μια φορά στο onloadedmetadata)
-      ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
-      ctxMask.putImageData(mask, 0, 0);
-
-      const total = (segmentation && segmentation.length) ? segmentation.length : 0;
-      countDiv.textContent = `Number of people (total): ${total}`;
-    } catch (err) {
-      log("⚠️ Detect error: " + err.message);
-    }
-  }
-
-  requestAnimationFrame(detect);
-}
-
-async function detectAll() {
-  if (!net) {
-    requestAnimationFrame(detectAll);
-    return;
-  }
-  if (!feedVideos || feedVideos.length === 0) {
-    requestAnimationFrame(detectAll);
-    return;
-  }
-
-  const now = performance.now();
-  if (now - lastSegTime < SEG_INTERVAL) {
-    requestAnimationFrame(detectAll);
-    return;
-  }
-  lastSegTime = now;
-
-  let total = 0;
-
-  for (let i = 0; i < feedVideos.length; i++) {
-    const v = feedVideos[i];
-    const c = feedCanvases[i];
-    const badge = feedBadges[i];
-    if (!v || !v.videoWidth) continue;
-
-    // **ΜΗΝ** ορίζεις c.width/c.height εδώ κάθε frame — έχουν ήδη οριστεί στο onloadedmetadata
-    // Απλά σβήνουμε και βάζουμε την updated mask
-    const ctx = c.getContext('2d');
-    ctx.clearRect(0, 0, c.width, c.height);
-
-    try {
-      const segmentation = await net.segmentMultiPerson(v, {
-        internalResolution: 'low',   // keep low for multi feeds
-        segmentationThreshold: 0.7
-      });
-
-      const count = (segmentation && segmentation.length) ? segmentation.length : 0;
-      total += count;
-      if (badge) badge.textContent = `People: ${count}`;
-
-      const mask = bodyPix.toMask(segmentation, {r:255,g:0,b:0,a:120}, {r:0,g:0,b:0,a:0});
-      ctx.putImageData(mask, 0, 0);
-    } catch (e) {
-      log("⚠️ segmentation error for feed " + i + ": " + e.message);
-      if (badge) badge.textContent = `People: ?`;
-    }
-  }
-
-  countDiv.textContent = `Number of people (total): ${total}`;
-  requestAnimationFrame(detectAll);
-}
-
-
-
-async function startScreen() {
-  stopAllFeeds();
-  try {
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    video.srcObject = stream;
-    await video.play();
-
-    ensureSingleWrapper();
-
+    // περιμένουμε metadata και ορίζουμε canvas μια φορά
     await new Promise(resolve => {
       if (video.readyState >= 1 && video.videoWidth) resolve();
       else video.onloadedmetadata = () => resolve();
     });
 
-    canvasMask.width = video.videoWidth;
-    canvasMask.height = video.videoHeight;
+    // pixel sizes (μόνο μία φορά)
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    canvasMask.width = vw;
+    canvasMask.height = vh;
     canvasMask.style.width = video.clientWidth + 'px';
     canvasMask.style.height = video.clientHeight + 'px';
-    canvasMask.style.display = 'block';
+    canvasMask.style.position = 'absolute';
+    canvasMask.style.left = '4px';
+    canvasMask.style.top = '4px';
+    canvasMask.style.pointerEvents = 'none';
+
+    // δημιουργία singleBuffer (offscreen) αν δεν υπάρχει ή αν μέγεθος άλλαξε
+    if (!singleBuffer) singleBuffer = document.createElement('canvas');
+    if (singleBuffer.width !== vw || singleBuffer.height !== vh) {
+      singleBuffer.width = vw;
+      singleBuffer.height = vh;
+    }
 
     cameraContainer.innerHTML = '';
     if (net) detect();
-  } catch (e) {
-    throw e;
-  }
+    log("🎥 Camera started successfully");
+  } catch (err) { log("❌ Error starting camera: " + err.message); }
 }
 
+// --- startAllCameras (αντικατάσταση / ενημέρωση) ---
 async function startAllCameras() {
   stopAllFeeds();
   cameraContainer.innerHTML = '';
@@ -284,11 +53,15 @@ async function startAllCameras() {
   feedCanvases = [];
   feedStreams = [];
   feedBadges = [];
+  feedBuffers = [];
 
   for (let i = 0; i < cameras.length; i++) {
     const device = cameras[i];
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: device.deviceId } }, audio: false });
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: device.deviceId } },
+        audio: false
+      });
 
       const v = document.createElement('video');
       v.autoplay = true; v.playsInline = true; v.muted = true;
@@ -298,7 +71,6 @@ async function startAllCameras() {
       v.style.zIndex = '1';
       v.style.display = 'block';
 
-      // wrapper (relative)
       const wrapper = document.createElement('div');
       wrapper.style.position = 'relative';
       wrapper.style.display = 'inline-block';
@@ -312,7 +84,6 @@ async function startAllCameras() {
 
       wrapper.appendChild(v);
 
-      // canvas overlay που θα κάθεται πάνω στο video
       const c = document.createElement('canvas');
       c.style.position = 'absolute';
       c.style.left = '6px';
@@ -324,7 +95,6 @@ async function startAllCameras() {
       c.style.background = 'transparent';
       wrapper.appendChild(c);
 
-      // label + badge
       const labelWrap = document.createElement('div');
       labelWrap.style.marginTop = '6px';
       labelWrap.style.display = 'flex';
@@ -354,15 +124,24 @@ async function startAllCameras() {
 
       cameraContainer.appendChild(wrapper);
 
-      // περιμένουμε metadata
+      // περιμένουμε metadata ώστε να πάρουμε video pixel size
       await new Promise((resolve) => {
         if (v.readyState >= 1 && v.videoWidth) resolve();
         else v.onloadedmetadata = () => resolve();
       });
 
-      // set canvas pixel size
+      // ΟΡΙΖΟΥΜΕ pixel μεγέθη ΜΙΑ φορά
       c.width = v.videoWidth;
       c.height = v.videoHeight;
+      // CSS μέγεθος (client) μπορεί να παραμείνει όπως είναι
+      c.style.width = v.clientWidth + 'px';
+      c.style.height = v.clientHeight + 'px';
+
+      // Δημιουργία offscreen buffer για αυτό το feed
+      const buffer = document.createElement('canvas');
+      buffer.width = v.videoWidth;
+      buffer.height = v.videoHeight;
+      feedBuffers.push(buffer);
 
       feedVideos.push(v);
       feedCanvases.push(c);
@@ -373,12 +152,12 @@ async function startAllCameras() {
     }
   }
 
-  // κρύβουμε το κεντρικό canvasMask όταν βλέπουμε πολλά feeds
   if (canvasMask) canvasMask.style.display = 'none';
 
   if (net) detectAll();
 }
 
+// --- stopAllFeeds (ελαφρώς ενημερωμένο για buffers) ---
 function stopAllFeeds() {
   if (stream) {
     try { stream.getTracks().forEach(t => t.stop()); } catch (e) {}
@@ -396,39 +175,62 @@ function stopAllFeeds() {
   feedVideos = [];
   feedCanvases = [];
   feedBadges = [];
+  feedBuffers = [];
   cameraContainer.innerHTML = '';
 
-  // αν υπάρχει single wrapper, αφαιρούμε canvas ή το κρύβουμε
-  if (singleWrapper && canvasMask) {
-    canvasMask.style.display = 'none';
-  }
+  // κρύβουμε single buffer / canvas
+  if (singleBuffer) { /* keep or null out if you want */ }
+  if (singleWrapper && canvasMask) canvasMask.style.display = 'none';
 }
 
+// --- detect (single) using buffer + drawImage ---
 async function detect() {
   if (!net || !video.videoWidth) { requestAnimationFrame(detect); return; }
+  const now = performance.now();
+  if (now - lastSegTime < SEG_INTERVAL) { requestAnimationFrame(detect); return; }
+  lastSegTime = now;
+
   try {
-    const segmentation = await net.segmentMultiPerson(video, { internalResolution: 'medium', segmentationThreshold: 0.7 });
-    // Δημιουργούμε μάσκα με ΔΙΑΦΑΝΕΣ background και ημιδιαφανές foreground
+    const segmentation = await net.segmentMultiPerson(video, {
+      internalResolution: 'medium',
+      segmentationThreshold: 0.7
+    });
+
+    // δημιουργούμε mask ImageData
     const mask = bodyPix.toMask(segmentation, {r:0,g:255,b:0,a:120}, {r:0,g:0,b:0,a:0});
-    // Βεβαιωνόμαστε ότι το canvas έχει pixel διαστάσεις
-    canvasMask.width = video.videoWidth;
-    canvasMask.height = video.videoHeight;
-    // καθαρίζουμε και γράφουμε μόνο τη μάσκα (χωρίς να ξανα-σχεδιάσουμε το video)
-    ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
-    ctxMask.putImageData(mask, 0, 0);
-    // ενημέρωση count (σύνολο)
+
+    // βάζουμε στο singleBuffer και μετά σχεδιάζουμε στο ορατό canvas με drawImage
+    if (!singleBuffer) singleBuffer = document.createElement('canvas');
+    if (singleBuffer.width !== canvasMask.width || singleBuffer.height !== canvasMask.height) {
+      singleBuffer.width = canvasMask.width;
+      singleBuffer.height = canvasMask.height;
+    }
+    const bufCtx = singleBuffer.getContext('2d');
+    // putImageData στον buffer (μην αγγίζεις το ορατό canvas εδώ)
+    bufCtx.putImageData(mask, 0, 0);
+
+    // τώρα αντιγράφουμε μία φορά στο ορατό canvas
+    const visCtx = ctxMask;
+    visCtx.clearRect(0, 0, canvasMask.width, canvasMask.height);
+    visCtx.drawImage(singleBuffer, 0, 0);
+
     const total = (segmentation && segmentation.length) ? segmentation.length : 0;
     countDiv.textContent = `Number of people (total): ${total}`;
-  } catch (err) { log("⚠️ Detect error: " + err.message); }
+  } catch (err) {
+    log("⚠️ Detect error: " + err.message);
+  }
+
   requestAnimationFrame(detect);
 }
 
+// --- detectAll (multi feeds) using buffers ---
 async function detectAll() {
-  if (!net) return;
-  if (!feedVideos || feedVideos.length === 0) {
-    requestAnimationFrame(detectAll);
-    return;
-  }
+  if (!net) { requestAnimationFrame(detectAll); return; }
+  if (!feedVideos || feedVideos.length === 0) { requestAnimationFrame(detectAll); return; }
+
+  const now = performance.now();
+  if (now - lastSegTime < SEG_INTERVAL) { requestAnimationFrame(detectAll); return; }
+  lastSegTime = now;
 
   let total = 0;
 
@@ -436,15 +238,8 @@ async function detectAll() {
     const v = feedVideos[i];
     const c = feedCanvases[i];
     const badge = feedBadges[i];
-    if (!v || !v.videoWidth) continue;
-
-    if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
-      c.width = v.videoWidth;
-      c.height = v.videoHeight;
-    }
-
-    const ctx = c.getContext('2d');
-    ctx.clearRect(0, 0, c.width, c.height);
+    const buffer = feedBuffers[i];
+    if (!v || !v.videoWidth || !c || !buffer) continue;
 
     try {
       const segmentation = await net.segmentMultiPerson(v, { internalResolution: 'low', segmentationThreshold: 0.7 });
@@ -452,9 +247,21 @@ async function detectAll() {
       total += count;
       if (badge) badge.textContent = `People: ${count}`;
 
-      // μάσκα με διάφανο background + ημιδιαφανές χρώμα foreground
       const mask = bodyPix.toMask(segmentation, {r:255,g:0,b:0,a:120}, {r:0,g:0,b:0,a:0});
-      ctx.putImageData(mask, 0, 0);
+
+      // putImageData στον offscreen buffer
+      const bufCtx = buffer.getContext('2d');
+      // βάζουμε pixel size σωστό (αν χρειαστεί)
+      if (buffer.width !== v.videoWidth || buffer.height !== v.videoHeight) {
+        buffer.width = v.videoWidth;
+        buffer.height = v.videoHeight;
+      }
+      bufCtx.putImageData(mask, 0, 0);
+
+      // τώρα ένα drawImage στο ορατό canvas σε ένα βήμα
+      const visCtx = c.getContext('2d');
+      visCtx.clearRect(0, 0, c.width, c.height);
+      visCtx.drawImage(buffer, 0, 0, c.width, c.height);
     } catch (e) {
       log("⚠️ segmentation error for feed " + i + ": " + e.message);
       if (badge) badge.textContent = `People: ?`;
