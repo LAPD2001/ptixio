@@ -127,32 +127,32 @@ async function detectLoop(video, canvas, countDiv) {
   const ctx = canvas.getContext('2d');
 
   async function detect() {
-  if (!net || !video.videoWidth) {
+    if (!net || !video.videoWidth) {
+      requestAnimationFrame(detect);
+      return;
+    }
+
+    try {
+      const segmentation = await net.segmentMultiPerson(video, {
+        internalResolution: 'medium',
+        segmentationThreshold: 0.7
+      });
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const mask = bodyPix.toMask(segmentation);
+      bodyPix.drawMask(canvas, video, mask, 0.6, 3, false);
+
+      const count = segmentation.length;
+      countDiv.textContent = `Number of people: ${count}`;
+    } catch (err) {
+      log("⚠️ Detect error: " + err.message);
+    }
+
     requestAnimationFrame(detect);
-    return;
   }
-
-  try {
-    const segmentation = await net.segmentMultiPerson(video, {
-      internalResolution: 'medium',
-      segmentationThreshold: 0.7
-    });
-
-    canvasMask.width = video.videoWidth;
-    canvasMask.height = video.videoHeight;
-    ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
-
-    const mask = bodyPix.toMask(segmentation);
-    bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
-
-    const count = segmentation.length;
-    countDiv.textContent = `Number of people: ${count}`;
-  } catch (err) {
-    log("⚠️ Detect error: " + err.message);
-  }
-
-  requestAnimationFrame(detect);
-}
 
   detect();
 }
