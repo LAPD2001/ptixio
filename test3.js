@@ -1,22 +1,8 @@
-const videoContainer = document.getElementById('videoContainer'); // Νέο div για όλα τα βίντεο
-const canvasMask = document.getElementById('canvasMask');
-const ctxMask = canvasMask.getContext('2d');
-const countDiv = document.getElementById('count');
-const cameraSelect = document.getElementById('cameraSelect');
-const logDiv = document.getElementById('log');
+const videoContainer = document.getElementById('videoContainer'); // div που θα κρατάει όλα τα video
+const canvasMaskContainer = document.getElementById('canvasMaskContainer'); // div για μάσκες
 
-let net;
-let streams = []; // Θα κρατάει όλα τα streams
-let useScreen = false;
-let cameras = [];
-
-// logging function
-function log(msg) {
-  console.log(msg);
-  logDiv.textContent += msg + "\n";
-}
-
-window.onload = init;
+let videos = []; // πίνακας με όλα τα video elements
+let canvases = []; // πίνακας με όλα τα canvas για μάσκα
 
 async function init() {
   useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
@@ -27,31 +13,42 @@ async function init() {
       alert("Δεν βρέθηκαν διαθέσιμες κάμερες.");
       return;
     }
-    await startCamera(cameras[0].deviceId);
+    createVideoForCamera(cameras[0].deviceId); // εμφανίζουμε την πρώτη κάμερα κανονικά
   } else {
     log("📺 Using screen share...");
-    streams = [await navigator.mediaDevices.getDisplayMedia({ video: true })];
-    createVideoElements(streams);
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.style.display = 'block';
+    videoContainer.appendChild(video);
+
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    video.srcObject = stream;
+    await video.play();
+
+    const canvas = document.createElement('canvas');
+    canvasMaskContainer.appendChild(canvas);
+    videos.push(video);
+    canvases.push(canvas);
   }
 
   cameraSelect.onchange = async () => {
     const value = cameraSelect.value;
     if (value === "all") {
-      log("🔄 Showing all cameras");
       await startAllCameras();
     } else {
-      log("🔄 Switching to camera: " + value);
-      await startCamera(value);
+      await startSingleCamera(value);
     }
   };
 
   net = await bodyPix.load();
   log("✅ BodyPix model loaded");
 
-  detectAll();
+  detect();
 }
 
-// Λίστα καμερών
+// δημιουργία option "all cameras"
 async function listCameras() {
   await navigator.mediaDevices.getUserMedia({ video: true });
   const devices = await navigator.mediaDevices.enumerateDevices();
@@ -59,8 +56,8 @@ async function listCameras() {
   cameraSelect.innerHTML = '';
 
   const allOption = document.createElement('option');
-  allOption.value = "all";
-  allOption.textContent = "All cameras";
+  allOption.value = 'all';
+  allOption.textContent = 'All Cameras';
   cameraSelect.appendChild(allOption);
 
   cameras.forEach((device, index) => {
@@ -70,105 +67,89 @@ async function listCameras() {
     cameraSelect.appendChild(option);
   });
 
-  if (cameras.length > 0) {
-    log("📷 Found " + cameras.length + " camera(s)");
-    cameras.forEach((c, i) => log(`   ${i + 1}. ${c.label || c.deviceId}`));
-  } else {
-    log("⚠️ No cameras found");
-  }
+  log(`📷 Found ${cameras.length} camera(s)`);
 }
 
-// Ξεκινάμε μία κάμερα
-async function startCamera(deviceId) {
-  try {
-    // Καθαρίζουμε προηγούμενα streams
-    streams.forEach(s => s.getTracks().forEach(track => track.stop()));
-    streams = [];
-
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: deviceId } },
-      audio: false
-    });
-    streams.push(stream);
-    createVideoElements(streams);
-    log("🎥 Camera started successfully");
-  } catch (err) {
-    log("❌ Error starting camera: " + err.message);
-  }
-}
-
-// Ξεκινάμε όλες τις κάμερες
-async function startAllCameras() {
-  // Καθαρίζουμε προηγούμενα streams
-  streams.forEach(s => s.getTracks().forEach(track => track.stop()));
-  streams = [];
-
-  for (const cam of cameras) {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: cam.deviceId } },
-      audio: false
-    });
-    streams.push(stream);
-  }
-  createVideoElements(streams);
-}
-
-// Δημιουργία video elements για κάθε stream
-function createVideoElements(streams) {
+// εκκίνηση μιας μόνο κάμερας
+async function startSingleCamera(deviceId) {
+  // σταμάτα όλα τα video προηγούμενα
+  videos.forEach(v => v.srcObject && v.srcObject.getTracks().forEach(t => t.stop()));
   videoContainer.innerHTML = '';
-  streams.forEach((s, i) => {
-    let video = document.createElement('video');
-    video.autoplay = true;
-    video.playsInline = true;
-    video.muted = true;
-    video.srcObject = s;
-    video.style.width = "300px";
-    video.style.height = "auto";
-    videoContainer.appendChild(video);
-    s.videoEl = video; // κρατάμε reference στο video element
-  });
+  canvasMaskContainer.innerHTML = '';
+  videos = [];
+  canvases = [];
+
+  await createVideoForCamera(deviceId);
 }
 
-// BodyPix detect για όλα τα video
-async function detectAll() {
-  if (!net || streams.length === 0 || !streams[0].videoEl.videoWidth) {
-    requestAnimationFrame(detectAll);
+// εκκίνηση όλων των καμερών μαζί
+async function startAllCameras() {
+  // σταμάτα προηγούμενα
+  videos.forEach(v => v.srcObject && v.srcObject.getTracks().forEach(t => t.stop()));
+  videoContainer.innerHTML = '';
+  canvasMaskContainer.innerHTML = '';
+  videos = [];
+  canvases = [];
+
+  for (let cam of cameras) {
+    await createVideoForCamera(cam.deviceId);
+  }
+}
+
+// helper για δημιουργία video + canvas μάσκας για κάθε κάμερα
+async function createVideoForCamera(deviceId) {
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = true;
+  video.style.display = 'block';
+  videoContainer.appendChild(video);
+
+  const canvas = document.createElement('canvas');
+  canvasMaskContainer.appendChild(canvas);
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { deviceId: { exact: deviceId } },
+    audio: false
+  });
+
+  video.srcObject = stream;
+  await video.play();
+
+  videos.push(video);
+  canvases.push(canvas);
+}
+
+// detect με BodyPix για όλες τις κάμερες
+async function detect() {
+  if (!net) {
+    requestAnimationFrame(detect);
     return;
   }
 
-  try {
-    ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
-    canvasMask.width = videoContainer.offsetWidth;
-    canvasMask.height = videoContainer.offsetHeight;
+  for (let i = 0; i < videos.length; i++) {
+    const video = videos[i];
+    const canvas = canvases[i];
+    const ctx = canvas.getContext('2d');
 
-    let totalCount = 0;
-    streams.forEach(async (s, index) => {
-      const video = s.videoEl;
-      if (!video.videoWidth) return;
+    if (!video.videoWidth) continue;
 
+    try {
       const segmentation = await net.segmentMultiPerson(video, {
         internalResolution: 'medium',
         segmentationThreshold: 0.7
       });
-      totalCount += segmentation.length;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const mask = bodyPix.toMask(segmentation);
-      // Κάνουμε resize του mask στο μέγεθος του video
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = video.videoWidth;
-      tempCanvas.height = video.videoHeight;
-      bodyPix.drawMask(tempCanvas, video, mask, 0.6, 3, false);
-
-      // Ζωγραφίζουμε πάνω στο κύριο canvas στο σωστό σημείο
-      const x = video.offsetLeft;
-      const y = video.offsetTop;
-      ctxMask.drawImage(tempCanvas, x, y, video.offsetWidth, video.offsetHeight);
-    });
-
-    countDiv.textContent = `Number of people: ${totalCount}`;
-  } catch (err) {
-    log("⚠️ Detect error: " + err.message);
+      bodyPix.drawMask(canvas, video, mask, 0.6, 3, false);
+    } catch (err) {
+      log("⚠️ Detect error: " + err.message);
+    }
   }
 
-  requestAnimationFrame(detectAll);
+  requestAnimationFrame(detect);
 }
