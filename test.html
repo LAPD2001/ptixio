@@ -1,4 +1,4 @@
-<div id="testnumber">Test number: 22</div>
+<div id="testnumber">Test number: 20</div>
 
 <canvas id="canvasMask"></canvas>
 <div id="count"></div>
@@ -13,18 +13,17 @@
   padding: 5px;              /* μικρα padding μέσα */
   display: inline-block;
   vertical-align: top;
-  width: 320px;              /* προαιρετικό, αν θέλεις ίδια width */
+  width: auto;              /* προαιρετικό, αν θέλεις ίδια width */
 }
 #cameraContainer video {
-  /*width: 100%;*/               /* το video γεμίζει το block */
-    display: block; 
-    margin: 0 auto;
-    width: 200px;
+  width: 200px;               /* το video γεμίζει το block */
+  height: auto;              /* διατηρείται η αναλογία */
 }
 #cameraContainer canvas {
   display: block;
   margin-top: 5px;
   width: 200px;               /* το canvas γεμίζει το block */
+  height: auto;              /* διατηρείται η αναλογία */
 }
 </style>
 
