@@ -1,12 +1,3 @@
-//doulevei gia mia-mia kamera kai screen share
-
-const video = document.createElement('video');
-video.autoplay = true;
-video.playsInline = true;
-video.muted = true;
-video.style.display = 'none';
-document.body.appendChild(video);
-
 const canvasMask = document.getElementById('canvasMask');
 const ctxMask = canvasMask.getContext('2d');
 const countDiv = document.getElementById('count');
@@ -14,17 +5,16 @@ const cameraSelect = document.getElementById('cameraSelect');
 const logDiv = document.getElementById('log');
 
 let net;
-let stream;
+let streams = [];
 let useScreen = false;
 let cameras = [];
+let videos = []; // πίνακας με όλα τα video elements
 
-// logging function (γράφει και στο console και στη σελίδα)
 function log(msg) {
   console.log(msg);
   logDiv.textContent += msg + "\n";
 }
 
-// αρχικοποίηση
 window.onload = init;
 
 async function init() {
@@ -36,19 +26,25 @@ async function init() {
       alert("Δεν βρέθηκαν διαθέσιμες κάμερες.");
       return;
     }
-    await startCamera(cameras[0].deviceId);
+    await startCamera(cameras[0].deviceId); // ξεκινά η πρώτη κάμερα
   } else {
     log("📺 Using screen share...");
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    video.srcObject = stream;
-    await video.play();
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    createVideoForStream(stream);
   }
 
   cameraSelect.onchange = async () => {
     if (useScreen) return;
     const deviceId = cameraSelect.value;
-    log("🔄 Switching to camera: " + deviceId);
-    await startCamera(deviceId);
+
+    // Αν επιλέχθηκε "All", δείξε όλες τις κάμερες
+    if (deviceId === "all") {
+      log("🔄 Showing all cameras...");
+      await showAllCameras();
+    } else {
+      log("🔄 Switching to camera: " + deviceId);
+      await startCamera(deviceId);
+    }
   };
 
   net = await bodyPix.load();
@@ -57,12 +53,17 @@ async function init() {
   detect();
 }
 
-// λήψη λίστας καμερών
 async function listCameras() {
-    await navigator.mediaDevices.getUserMedia({ video: true });
+  await navigator.mediaDevices.getUserMedia({ video: true });
   const devices = await navigator.mediaDevices.enumerateDevices();
   cameras = devices.filter(d => d.kind === 'videoinput');
   cameraSelect.innerHTML = '';
+
+  // Προσθήκη επιλογής "All cameras"
+  const allOption = document.createElement('option');
+  allOption.value = 'all';
+  allOption.textContent = 'All Cameras';
+  cameraSelect.appendChild(allOption);
 
   cameras.forEach((device, index) => {
     const option = document.createElement('option');
@@ -79,52 +80,84 @@ async function listCameras() {
   }
 }
 
-// εκκίνηση κάμερας
 async function startCamera(deviceId) {
-  try {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
+  stopAllStreams();
 
-    stream = await navigator.mediaDevices.getUserMedia({
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
       video: { deviceId: { exact: deviceId } },
       audio: false
     });
-
-    video.srcObject = stream;
-    await video.play();
-
+    createVideoForStream(stream);
     log("🎥 Camera started successfully");
   } catch (err) {
     log("❌ Error starting camera: " + err.message);
   }
 }
 
+async function showAllCameras() {
+  stopAllStreams();
+  for (const cam of cameras) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: cam.deviceId } },
+        audio: false
+      });
+      createVideoForStream(stream);
+    } catch (err) {
+      log("⚠️ Error starting one camera: " + err.message);
+    }
+  }
+}
+
+function createVideoForStream(stream) {
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = true;
+  video.width = 320;
+  video.height = 240;
+  video.style.margin = "5px";
+  document.body.appendChild(video);
+
+  video.srcObject = stream;
+  streams.push(stream);
+  videos.push(video);
+}
+
+function stopAllStreams() {
+  streams.forEach(s => s.getTracks().forEach(t => t.stop()));
+  streams = [];
+  videos.forEach(v => v.remove());
+  videos = [];
+}
+
 // BodyPix detect
 async function detect() {
-  if (!net || !video.videoWidth) {
+  if (!net || videos.length === 0) {
     requestAnimationFrame(detect);
     return;
   }
 
-  try {
+  ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+  let totalPeople = 0;
+
+  for (const video of videos) {
+    if (!video.videoWidth) continue;
+
     const segmentation = await net.segmentMultiPerson(video, {
       internalResolution: 'medium',
       segmentationThreshold: 0.7
     });
 
+    const mask = bodyPix.toMask(segmentation);
     canvasMask.width = video.videoWidth;
     canvasMask.height = video.videoHeight;
-    ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
-
-    const mask = bodyPix.toMask(segmentation);
     bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
 
-    const count = segmentation.length;
-    countDiv.textContent = `Number of people: ${count}`;
-  } catch (err) {
-    log("⚠️ Detect error: " + err.message);
+    totalPeople += segmentation.length;
   }
 
+  countDiv.textContent = `Number of people: ${totalPeople}`;
   requestAnimationFrame(detect);
 }
