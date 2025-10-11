@@ -7,23 +7,34 @@
 <div id="log" style="white-space: pre-wrap; font-family: monospace; background: #111; color: #0f0; padding: 8px; margin-top: 10px;"></div>
 
 <style>
-#cameraContainer > div {
-  border: 0.5px solid #333;  /* λεπτό περίγραμμα */
-  margin: 5px;               /* μικρα κενά γύρω */
-  padding: 5px;              /* μικρα padding μέσα */
-  display: inline-block;
-  vertical-align: top;
-  width: 320px;              /* προαιρετικό, αν θέλεις ίδια width */
-}
-#cameraContainer video {
-  width: 100%;               /* το video γεμίζει το block */
-}
-#cameraContainer canvas {
-  display: block;
-  margin-top: 5px;
-  width: 100%;               /* το canvas γεμίζει το block */
-}
+  /* για κάθε block κάμερας: βεβαιώσου ότι video είναι πίσω και canvas πάνω */
+  #cameraContainer div {
+    position: relative;
+    display: inline-block;
+    width: 320px; /* ή auto */
+  }
+  #cameraContainer video {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: auto;
+    z-index: 1;
+    transform: scaleX(-1); /* αν χρειάζεσαι mirror για μπροστινή κάμερα */
+  }
+  #cameraContainer canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: auto;
+    z-index: 2;
+    pointer-events: none; /* για να μην μπλοκάρει clicks */
+  }
+  #cameraContainer div > div { /* title / count */
+    position: relative;
+    z-index: 3;
+  }
 </style>
+
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
