@@ -162,7 +162,7 @@ async function detect() {
 
     if (cameraSelect.value === "all") {
       // όλες οι κάμερες ταυτόχρονα
-      allVideos.forEach(v => {
+      allVideos.forEach(async v => {
         if (!v.videoWidth) return;
 
         canvasMask.width = v.videoWidth;
