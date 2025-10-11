@@ -99,29 +99,85 @@ async function startCamera(deviceId) {
 }
 
 // BodyPix detect
+// Αντικατάσταση της υπάρχουσας detect()
 async function detect() {
-  if (!net || !video.videoWidth) {
+  if (!net) {
+    requestAnimationFrame(detect);
+    return;
+  }
+
+  // περιμένουμε να έχει το video διαστάσεις
+  if (!video.videoWidth || !video.videoHeight) {
     requestAnimationFrame(detect);
     return;
   }
 
   try {
-    const segmentation = await net.segmentMultiPerson(video, {
+    // 1) τρέχουμε multi-person segmentation
+    const segmentations = await net.segmentMultiPerson(video, {
       internalResolution: 'medium',
-      segmentationThreshold: 0.7
+      segmentationThreshold: 0.7,
+      maxDetections: 10
     });
 
+    // 2) set canvas pixel size to video size
     canvasMask.width = video.videoWidth;
     canvasMask.height = video.videoHeight;
+
+    // 3) σχεδιάζουμε πρώτα το video ως background (ώστε η μάσκα να είναι πάνω)
     ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+    ctxMask.drawImage(video, 0, 0, canvasMask.width, canvasMask.height);
 
-    const mask = bodyPix.toMask(segmentation);
-    bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
+    // 4) αν δεν έχουμε ανθρώπους, απλά ενημερώνουμε το count και τελειώνουμε
+    if (!Array.isArray(segmentations) || segmentations.length === 0) {
+      countDiv.textContent = `Number of people: 0`;
+      requestAnimationFrame(detect);
+      return;
+    }
 
-    const count = segmentation.length;
+    // 5) δημιουργούμε προσωρινό offscreen canvas για να "συγχωνεύσουμε" όλα τα masks
+    const off = document.createElement('canvas');
+    off.width = canvasMask.width;
+    off.height = canvasMask.height;
+    const offCtx = off.getContext('2d');
+
+    // προαιρετικά: καθαρίζουμε και το offscreen
+    offCtx.clearRect(0, 0, off.width, off.height);
+
+    // 6) για κάθε segmentation, παίρνουμε μάσκα (ImageData-like) και την τοποθετούμε στο offscreen
+    for (let seg of segmentations) {
+      // bodyPix.toMask δουλεύει με single segmentation
+      const mask = bodyPix.toMask(seg); // {data: Uint8ClampedArray, width, height}
+      // δημιουργούμε ImageData από τα δεδομένα της μάσκας
+      const imageData = new ImageData(new Uint8ClampedArray(mask.data), mask.width, mask.height);
+      // putImageData στο offscreen (στο pixel scale)
+      offCtx.putImageData(imageData, 0, 0);
+      // με source-over ενώνουμε τις μάσκες (default)
+      // αν θέλεις διαφορετικά χρώματα/στυλ, θα πρέπει να επεξεργαστείς τα pixel πριν putImageData
+    }
+
+    // 7) (προαιρετικό) εφαρμόζουμε blur στο offscreen πριν το σχεδιάσουμε
+    // (εργαλειο: ctx.filter)
+    offCtx.filter = 'blur(3px)';       // ή '' για no blur
+    const blurred = document.createElement('canvas');
+    blurred.width = off.width;
+    blurred.height = off.height;
+    const blurredCtx = blurred.getContext('2d');
+    blurredCtx.drawImage(off, 0, 0);
+    offCtx.filter = 'none';
+
+    // 8) σχεδιάζουμε την συγχωνευμένη μάσκα πάνω στο κύριο canvas με opacity
+    ctxMask.save();
+    ctxMask.globalAlpha = 0.6;         // opacity της μάσκας (όπως το drawMask)
+    ctxMask.drawImage(blurred, 0, 0, canvasMask.width, canvasMask.height);
+    ctxMask.restore();
+
+    // 9) ενημέρωση πλήθους
+    const count = segmentations.length;
     countDiv.textContent = `Number of people: ${count}`;
+
   } catch (err) {
-    log("⚠️ Detect error: " + err.message);
+    log("⚠️ Detect error: " + (err && err.message ? err.message : err));
   }
 
   requestAnimationFrame(detect);
