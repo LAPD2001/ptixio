@@ -133,27 +133,122 @@ async function startCamera(deviceId) {
     video.srcObject = stream;
     await video.play();
 
-    // βάζουμε video+canvas μέσα σε wrapper και εμφανίζουμε canvasMask ως overlay
-    ensureSingleWrapper();
+// --- στο startCamera μετά το await video.play() βάλε:
+await new Promise(resolve => {
+  if (video.readyState >= 1 && video.videoWidth) resolve();
+  else video.onloadedmetadata = () => resolve();
+});
+canvasMask.width = video.videoWidth;
+canvasMask.height = video.videoHeight;
+canvasMask.style.width = video.clientWidth + 'px';
+canvasMask.style.height = video.clientHeight + 'px';
+canvasMask.style.position = 'absolute';
+canvasMask.style.left = '4px';
+canvasMask.style.top = '4px';
+canvasMask.style.zIndex = '2';
+canvasMask.style.pointerEvents = 'none';
+canvasMask.style.background = 'transparent';
 
-    // set canvas pixel size after loaded metadata
-    await new Promise(resolve => {
-      if (video.readyState >= 1 && video.videoWidth) resolve();
-      else video.onloadedmetadata = () => resolve();
-    });
+// --- στο startAllCameras, μετά το await v.play() και μετά το onloadedmetadata:
+c.width = v.videoWidth;
+c.height = v.videoHeight;
+// ΟΧΙ: c.style.width/height ανά frame. Ορισμένα css μεγέθη μπορείς να ορίσεις εδώ αν χρειάζεται.
+// π.χ.
+// c.style.width = v.clientWidth + 'px';
+// c.style.height = v.clientHeight + 'px';
 
-    canvasMask.width = video.videoWidth;
-    canvasMask.height = video.videoHeight;
+// ------------------------
+// Throttle / timed detection (δε βάζουμε segmentation σε κάθε requestAnimationFrame)
+// global timing control
+let lastSegTime = 0;
+const SEG_INTERVAL = 100; // ms -> ~10fps
 
-    canvasMask.style.width = video.clientWidth + 'px';
-    canvasMask.style.height = video.clientHeight + 'px';
-    canvasMask.style.display = 'block';
+async function detect() {
+  if (!net || !video.videoWidth) {
+    requestAnimationFrame(detect);
+    return;
+  }
 
-    cameraContainer.innerHTML = '';
-    if (net) detect();
-    log("🎥 Camera started successfully");
-  } catch (err) { log("❌ Error starting camera: " + err.message); }
+  const now = performance.now();
+  if (now - lastSegTime >= SEG_INTERVAL) {
+    lastSegTime = now;
+    try {
+      const segmentation = await net.segmentMultiPerson(video, {
+        internalResolution: 'medium',
+        segmentationThreshold: 0.7
+      });
+
+      // Δημιουργούμε μάσκα με διαφανές back και ημιδιαφανές foreground
+      const mask = bodyPix.toMask(segmentation, {r:0,g:255,b:0,a:120}, {r:0,g:0,b:0,a:0});
+
+      // Σιγουρευόμαστε ΟΤΙ ΤΑ PIXEL DIMENSIONS ΔΕΝ ΑΛΛΑΖΟΥΝ ΕΔΩ
+      // (έχουν τεθεί μια φορά στο onloadedmetadata)
+      ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+      ctxMask.putImageData(mask, 0, 0);
+
+      const total = (segmentation && segmentation.length) ? segmentation.length : 0;
+      countDiv.textContent = `Number of people (total): ${total}`;
+    } catch (err) {
+      log("⚠️ Detect error: " + err.message);
+    }
+  }
+
+  requestAnimationFrame(detect);
 }
+
+async function detectAll() {
+  if (!net) {
+    requestAnimationFrame(detectAll);
+    return;
+  }
+  if (!feedVideos || feedVideos.length === 0) {
+    requestAnimationFrame(detectAll);
+    return;
+  }
+
+  const now = performance.now();
+  if (now - lastSegTime < SEG_INTERVAL) {
+    requestAnimationFrame(detectAll);
+    return;
+  }
+  lastSegTime = now;
+
+  let total = 0;
+
+  for (let i = 0; i < feedVideos.length; i++) {
+    const v = feedVideos[i];
+    const c = feedCanvases[i];
+    const badge = feedBadges[i];
+    if (!v || !v.videoWidth) continue;
+
+    // **ΜΗΝ** ορίζεις c.width/c.height εδώ κάθε frame — έχουν ήδη οριστεί στο onloadedmetadata
+    // Απλά σβήνουμε και βάζουμε την updated mask
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    try {
+      const segmentation = await net.segmentMultiPerson(v, {
+        internalResolution: 'low',   // keep low for multi feeds
+        segmentationThreshold: 0.7
+      });
+
+      const count = (segmentation && segmentation.length) ? segmentation.length : 0;
+      total += count;
+      if (badge) badge.textContent = `People: ${count}`;
+
+      const mask = bodyPix.toMask(segmentation, {r:255,g:0,b:0,a:120}, {r:0,g:0,b:0,a:0});
+      ctx.putImageData(mask, 0, 0);
+    } catch (e) {
+      log("⚠️ segmentation error for feed " + i + ": " + e.message);
+      if (badge) badge.textContent = `People: ?`;
+    }
+  }
+
+  countDiv.textContent = `Number of people (total): ${total}`;
+  requestAnimationFrame(detectAll);
+}
+
+
 
 async function startScreen() {
   stopAllFeeds();
