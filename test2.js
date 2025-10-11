@@ -1,8 +1,10 @@
 const logDiv = document.getElementById('log');
 const cameraContainer = document.getElementById('cameraContainer');
+const cameraSelect = document.getElementById('cameraSelect');
 
 let net;
 let cameras = [];
+let activeStreams = [];
 
 // απλή logging function
 function log(msg) {
@@ -15,7 +17,7 @@ window.onload = init;
 
 async function init() {
   log("🚀 Initializing...");
-  await navigator.mediaDevices.getUserMedia({ video: true }); // trigger permission
+  await navigator.mediaDevices.getUserMedia({ video: true }); // ζητάει άδεια
 
   const devices = await navigator.mediaDevices.enumerateDevices();
   cameras = devices.filter(d => d.kind === 'videoinput');
@@ -26,11 +28,50 @@ async function init() {
     return;
   }
 
+  // Προσθέτουμε επιλογές στο dropdown
+  cameraSelect.innerHTML = '';
+  const allOption = document.createElement('option');
+  allOption.value = 'all';
+  allOption.textContent = '📸 All cameras';
+  cameraSelect.appendChild(allOption);
+
+  cameras.forEach((cam, i) => {
+    const option = document.createElement('option');
+    option.value = cam.deviceId;
+    option.textContent = cam.label || `Camera ${i + 1}`;
+    cameraSelect.appendChild(option);
+  });
+
   net = await bodyPix.load();
   log("✅ BodyPix model loaded");
 
-  for (let i = 0; i < cameras.length; i++) {
-    createCameraBlock(cameras[i], i);
+  // όταν αλλάζει επιλογή στο select
+  cameraSelect.onchange = () => handleCameraSelection(cameraSelect.value);
+
+  // ξεκινάμε με “All cameras”
+  handleCameraSelection('all');
+}
+
+// χειρίζεται ποια κάμερα να δείξει
+async function handleCameraSelection(value) {
+  // καθαρίζει ό,τι υπήρχε
+  cameraContainer.innerHTML = '';
+  activeStreams.forEach(s => s.getTracks().forEach(t => t.stop()));
+  activeStreams = [];
+
+  if (value === 'all') {
+    log("🌐 Displaying ALL cameras...");
+    for (let i = 0; i < cameras.length; i++) {
+      await createCameraBlock(cameras[i], i);
+    }
+  } else {
+    const camera = cameras.find(c => c.deviceId === value);
+    if (camera) {
+      log(`🎥 Displaying only camera: ${camera.label || camera.deviceId}`);
+      await createCameraBlock(camera, cameras.indexOf(camera));
+    } else {
+      log("⚠️ Camera not found!");
+    }
   }
 }
 
@@ -72,6 +113,7 @@ async function createCameraBlock(camera, index) {
     });
     video.srcObject = stream;
     await video.play();
+    activeStreams.push(stream);
     log(`✅ Started camera ${index + 1}`);
 
     detectLoop(video, canvas, countDiv);
