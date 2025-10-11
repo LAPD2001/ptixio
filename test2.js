@@ -123,19 +123,8 @@ async function createCameraBlock(camera, index) {
 }
 
 // BodyPix detection loop για κάθε κάμερα
-// Αντικατάστησε την υπάρχουσα detectLoop με αυτή
 async function detectLoop(video, canvas, countDiv) {
   const ctx = canvas.getContext('2d');
-
-  // περιμένετε να έχει το video διαστάσεις
-  await new Promise(resolve => {
-    if (video.readyState >= 2 && video.videoWidth) resolve();
-    else {
-      video.onloadeddata = () => resolve();
-      // μικρό timeout fallback
-      setTimeout(resolve, 2000);
-    }
-  });
 
   async function detect() {
     if (!video.videoWidth) {
@@ -143,44 +132,22 @@ async function detectLoop(video, canvas, countDiv) {
       return;
     }
 
-    // set canvas size to match video (pixel-size)
-    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-    }
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
     try {
-      // χρησιμοποιούμε segmentPerson (επισημαίνει ΟΛΑ τα άτομα σε ένα segmentation)
-      const segmentation = await net.segmentPerson(video, {
+      const segmentation = await net.segmentMultiPerson(video, {
         internalResolution: 'medium',
         segmentationThreshold: 0.7
       });
 
-      // έλεγξε το segmentation για debugging
-      // console.log('segmentation:', segmentation);
+      const mask = bodyPix.toMask(segmentation);
+      bodyPix.drawMask(canvas, video, mask, 0.6, 3, false);
 
-      // αν segmentation είναι έγκυρο, φτιάχνουμε μάσκα και τη ζωγραφίζουμε
-      if (segmentation && segmentation.data) {
-        const mask = bodyPix.toMask(segmentation); // επιστρέφει ImageData-like
-        // σχεδιάζουμε τη μάσκα πάνω στο video στο canvas
-        bodyPix.drawMask(canvas, video, mask, 0.6, 3, false);
-        // αν θες να σχεδιάσεις και το ίδιο το video κάτω από τη μάσκα:
-        // ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        // ctx.putImageData(maskImageData, 0, 0);
-      } else {
-        // αν δεν έχει segmentation, σχεδιάζουμε απλά το video (για να μην εμφανίζεται μαύρο)
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
-
-      // count: segmentation may be single mask -> count by checking number of connected components is harder.
-      // Αν θες απλό count: μπορείς να fallback στο segmentMultiPerson για μέτρηση:
-      const multi = await net.segmentMultiPerson(video, { internalResolution: 'low', segmentationThreshold: 0.7 });
-      const count = Array.isArray(multi) ? multi.length : 0;
+      const count = segmentation.length;
       countDiv.textContent = `People: ${count}`;
     } catch (err) {
-      log(`⚠️ Detect error: ${err && err.message ? err.message : err}`);
+      log(`⚠️ Detect error: ${err.message}`);
     }
 
     requestAnimationFrame(detect);
@@ -188,4 +155,3 @@ async function detectLoop(video, canvas, countDiv) {
 
   detect();
 }
-
