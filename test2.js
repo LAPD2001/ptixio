@@ -1,81 +1,71 @@
 const logDiv = document.getElementById('log');
 const cameraContainer = document.getElementById('cameraContainer');
+const modeSelect = document.getElementById('modeSelect');
 const cameraSelect = document.getElementById('cameraSelect');
 
 let net;
 let cameras = [];
-let activeStreams = [];
 
-// απλή logging function
 function log(msg) {
   console.log(msg);
   logDiv.textContent += msg + "\n";
 }
 
-// αρχή
 window.onload = init;
 
 async function init() {
   log("🚀 Initializing...");
-  await navigator.mediaDevices.getUserMedia({ video: true }); // ζητάει άδεια
+  // Ζητάμε πρώτα άδεια για να αποκαλυφθούν τα labels στο κινητό
+  try {
+    await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+  } catch (e) {
+    log("⚠️ Δεν δόθηκε άδεια στην κάμερα.");
+  }
 
   const devices = await navigator.mediaDevices.enumerateDevices();
   cameras = devices.filter(d => d.kind === 'videoinput');
-  log(`📷 Found ${cameras.length} camera(s)`);
+  log(`📷 Βρέθηκαν ${cameras.length} κάμερες.`);
 
   if (cameras.length === 0) {
-    log("⚠️ No cameras found.");
+    log("⚠️ Καμία κάμερα δεν βρέθηκε.");
     return;
   }
 
-  // Προσθέτουμε επιλογές στο dropdown
-  cameraSelect.innerHTML = '';
-  const allOption = document.createElement('option');
-  allOption.value = 'all';
-  allOption.textContent = '📸 All cameras';
-  cameraSelect.appendChild(allOption);
-
+  // Γεμίζουμε το select με τις κάμερες
+  cameraSelect.innerHTML = "";
   cameras.forEach((cam, i) => {
-    const option = document.createElement('option');
-    option.value = cam.deviceId;
-    option.textContent = cam.label || `Camera ${i + 1}`;
-    cameraSelect.appendChild(option);
+    const opt = document.createElement('option');
+    opt.value = cam.deviceId;
+    opt.textContent = cam.label || `Camera ${i + 1}`;
+    cameraSelect.appendChild(opt);
   });
 
   net = await bodyPix.load();
   log("✅ BodyPix model loaded");
 
-  // όταν αλλάζει επιλογή στο select
-  cameraSelect.onchange = () => handleCameraSelection(cameraSelect.value);
+  // Αν αλλάξει το mode ή η κάμερα, επανεκκινεί
+  modeSelect.onchange = startSelectedMode;
+  cameraSelect.onchange = startSelectedMode;
 
-  // ξεκινάμε με “All cameras”
-  handleCameraSelection('all');
+  startSelectedMode();
 }
 
-// χειρίζεται ποια κάμερα να δείξει
-async function handleCameraSelection(value) {
-  // καθαρίζει ό,τι υπήρχε
-  cameraContainer.innerHTML = '';
-  activeStreams.forEach(s => s.getTracks().forEach(t => t.stop()));
-  activeStreams = [];
+async function startSelectedMode() {
+  cameraContainer.innerHTML = "";
 
-  if (value === 'all') {
-    log("🌐 Displaying ALL cameras...");
+  if (modeSelect.value === "all") {
+    // Όλες οι κάμερες
     for (let i = 0; i < cameras.length; i++) {
       await createCameraBlock(cameras[i], i);
     }
   } else {
-    const camera = cameras.find(c => c.deviceId === value);
-    if (camera) {
-      log(`🎥 Displaying only camera: ${camera.label || camera.deviceId}`);
-      await createCameraBlock(camera, cameras.indexOf(camera));
-    } else {
-      log("⚠️ Camera not found!");
-    }
+    // Μία κάμερα
+    const selected = cameras.find(c => c.deviceId === cameraSelect.value);
+    if (selected) await createCameraBlock(selected, 0);
   }
 }
 
-// δημιουργεί video + canvas για κάθε κάμερα
+// Δημιουργεί video + canvas για κάθε κάμερα
 async function createCameraBlock(camera, index) {
   const block = document.createElement('div');
   block.style.border = "1px solid #333";
@@ -113,16 +103,15 @@ async function createCameraBlock(camera, index) {
     });
     video.srcObject = stream;
     await video.play();
-    activeStreams.push(stream);
-    log(`✅ Started camera ${index + 1}`);
+    log(`✅ Ξεκίνησε η κάμερα ${index + 1}`);
 
     detectLoop(video, canvas, countDiv);
   } catch (err) {
-    log(`❌ Error starting camera ${index + 1}: ${err.message}`);
+    log(`❌ Σφάλμα στην κάμερα ${index + 1}: ${err.message}`);
   }
 }
 
-// BodyPix detection loop για κάθε κάμερα
+// Ανίχνευση ατόμων με BodyPix
 async function detectLoop(video, canvas, countDiv) {
   const ctx = canvas.getContext('2d');
 
