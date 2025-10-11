@@ -5,6 +5,9 @@ video.autoplay = true;
 video.playsInline = true;
 video.muted = true;
 video.style.display = 'none';
+video.style.width = '300px';
+video.style.margin = '5px';
+
 document.body.appendChild(video);
 
 const canvasMask = document.getElementById('canvasMask');
