@@ -127,10 +127,13 @@ async function detectLoop(video, canvas, countDiv) {
   const ctx = canvas.getContext('2d');
 
   async function detect() {
-    if (!net || !video.videoWidth) {
+    if (!video.videoWidth) {
       requestAnimationFrame(detect);
       return;
     }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
     try {
       const segmentation = await net.segmentMultiPerson(video, {
@@ -138,17 +141,13 @@ async function detectLoop(video, canvas, countDiv) {
         segmentationThreshold: 0.7
       });
 
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       const mask = bodyPix.toMask(segmentation);
       bodyPix.drawMask(canvas, video, mask, 0.6, 3, false);
 
       const count = segmentation.length;
-      countDiv.textContent = `Number of people: ${count}`;
+      countDiv.textContent = `People: ${count}`;
     } catch (err) {
-      log("⚠️ Detect error: " + err.message);
+      log(`⚠️ Detect error: ${err.message}`);
     }
 
     requestAnimationFrame(detect);
