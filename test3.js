@@ -1,4 +1,4 @@
-//doulevei alla vgazei error sto console. Episiw bgazei pano stous anthropous me xroma th maska pano tous kai tremopaizei h maska sto all cameras.
+//exei thema sto all cameras. Den emfanizei thn eikona ths kameras + to number of people (total) tremopaizei otan einai >0
 // test-fixed.js
 
 const video = document.createElement('video');
