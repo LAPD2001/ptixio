@@ -1,3 +1,5 @@
+//doulevei mono gia tis kamerew - den exei screen share. Den doulevei to mask se kamia apo tis kameres.
+
 const logDiv = document.getElementById('log');
 const cameraContainer = document.getElementById('cameraContainer');
 const cameraSelect = document.getElementById('cameraSelect');
