@@ -1,4 +1,4 @@
-//psilokomple gia pollew kameres kai screen share apla vgazei to mask me allo xroma
+//psilokomple gia pollew kameres kai screen share apla vgazei to mask me allo
 // test-overlay-fixed.js
 
 const video = document.createElement('video');
