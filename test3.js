@@ -1,3 +1,4 @@
+//doulevei alla vgazei error sto console. Episiw bgazei pano stous anthropous me xroma th maska pano tous kai tremopaizei h maska sto all cameras.
 // test-overlay-fixed.js
 
 const video = document.createElement('video');
