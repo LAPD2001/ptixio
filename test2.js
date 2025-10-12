@@ -1,6 +1,7 @@
 const logDiv = document.getElementById('log');
 const cameraContainer = document.getElementById('cameraContainer');
 const cameraSelect = document.getElementById('cameraSelect');
+const ctxMask = canvasMask.getContext('2d');
 
 let net;
 let cameras = [];
@@ -134,12 +135,13 @@ async function detectLoop(video, canvas, countDiv) {
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
+    ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+    
     try {
       const segmentation = await net.segmentMultiPerson(video, {
         internalResolution: 'medium',
         segmentationThreshold: 0.7
-      });
+      });      
 
       const mask = bodyPix.toMask(segmentation);
       bodyPix.drawMask(canvas, video, mask, 0.6, 3, false);
