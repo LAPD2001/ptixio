@@ -5,6 +5,8 @@ video.autoplay = true;
 video.playsInline = true;
 video.muted = true;
 video.style.display = 'none';
+let useScreen = false;
+
 document.body.appendChild(video);
 
 const canvasMask = document.getElementById('canvasMask');
@@ -30,28 +32,32 @@ function log(msg) {
 window.onload = init;
 
 async function init() {
-  await listCameras();
+  useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
 
-  // προσθέτουμε επιλογή "All cameras"
-  const allOption = document.createElement('option');
-  allOption.value = 'all';
-  allOption.textContent = '📸 All cameras';
-  cameraSelect.insertBefore(allOption, cameraSelect.firstChild);
-
-  // αρχική εκκίνηση
-  await startCamera(cameras[0].deviceId);
+  if (!useScreen) {
+    await listCameras();
+    if (cameras.length === 0) {
+      alert("Δεν βρέθηκαν διαθέσιμες κάμερες.");
+      return;
+    }
+    await startCamera(cameras[0].deviceId);
+  } else {
+    log("📺 Using screen share...");
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    video.srcObject = stream;
+    await video.play();
+  }
 
   cameraSelect.onchange = async () => {
+    if (useScreen) return;
     const deviceId = cameraSelect.value;
-    if (deviceId === 'all') {
-      await showAllCameras();
-    } else {
-      await startCamera(deviceId);
-    }
+    log("🔄 Switching to camera: " + deviceId);
+    await startCamera(deviceId);
   };
 
   net = await bodyPix.load();
   log("✅ BodyPix model loaded");
+
   detect();
 }
 
