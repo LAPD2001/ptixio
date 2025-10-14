@@ -32,7 +32,7 @@ function log(msg) {
 window.onload = init;
 
 async function init() {
-  useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.'");
+  useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
 
   if (!useScreen) {
     await listCameras();
@@ -40,9 +40,7 @@ async function init() {
       alert("Δεν βρέθηκαν διαθέσιμες κάμερες.");
       return;
     }
-
-    // 🟢 Ξεκινάμε δείχνοντας όλες τις κάμερες
-    await showAllCameras();
+    await startCamera(cameras[0].deviceId);
   } else {
     log("📺 Using screen share...");
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -92,8 +90,6 @@ async function listCameras() {
   });
 
   if (cameras.length > 0) {
-    // 🟢 προεπιλογή: "All cameras"
-    cameraSelect.selectedIndex = 0;
     log("📷 Found " + cameras.length + " camera(s)");
   } else {
     log("⚠️ No cameras found");
@@ -142,9 +138,9 @@ async function showAllCameras() {
 
   // φτιάχνουμε container
   if (cameraContainer) cameraContainer.remove();
-  cameraContainer = document.getElementById('cameraContainer');
-  //cameraContainer.id = 'cameraContainer';
-  σcameraContainer.style.display = 'flex';
+  cameraContainer = document.createElement('div');
+  cameraContainer.id = 'cameraContainer';
+  cameraContainer.style.display = 'flex';
   cameraContainer.style.flexWrap = 'wrap';
   cameraContainer.style.gap = '10px';
   document.body.appendChild(cameraContainer);
