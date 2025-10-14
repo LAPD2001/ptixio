@@ -50,16 +50,13 @@ async function init() {
 
   cameraSelect.onchange = async () => {
     if (useScreen) return;
-
     const deviceId = cameraSelect.value;
-    if (deviceId === 'all') {
-      log("🧩 Showing all cameras...");
+    log("🔄 Selected: " + deviceId);
+    if (deviceId === "all") {
       await showAllCameras();
-      return;
+    } else {
+      await startCamera(deviceId);
     }
-
-    log("🔄 Switching to camera: " + deviceId);
-    await startCamera(deviceId);
   };
 
   net = await bodyPix.load();
@@ -75,13 +72,12 @@ async function listCameras() {
   cameras = devices.filter(d => d.kind === 'videoinput');
   cameraSelect.innerHTML = '';
 
-  // προσθέτουμε επιλογή για όλες τις κάμερες
+  // προσθέτουμε επιλογή "Όλες οι κάμερες"
   const allOption = document.createElement('option');
-  allOption.value = 'all';
-  allOption.textContent = '📷 Show all cameras';
+  allOption.value = "all";
+  allOption.textContent = "📷 Όλες οι κάμερες";
   cameraSelect.appendChild(allOption);
 
-  // και μετά προσθέτουμε κάθε κάμερα ξεχωριστά
   cameras.forEach((device, index) => {
     const option = document.createElement('option');
     option.value = device.deviceId;
@@ -133,16 +129,14 @@ async function showAllCameras() {
     stream = null;
   }
 
-  // καθαρίζουμε τη μάσκα
+  // κρύβουμε τη μάσκα
   ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+  countDiv.textContent = '';
 
   // φτιάχνουμε container
   if (cameraContainer) cameraContainer.remove();
   cameraContainer = document.createElement('div');
   cameraContainer.id = 'cameraContainer';
-  cameraContainer.style.display = 'flex';
-  cameraContainer.style.flexWrap = 'wrap';
-  cameraContainer.style.gap = '10px';
   document.body.appendChild(cameraContainer);
 
   // ξεκινάμε όλες τις κάμερες
@@ -150,12 +144,12 @@ async function showAllCameras() {
     const cam = cameras[i];
 
     const block = document.createElement('div');
+    block.style.display = 'inline-block';
+    block.style.margin = '6px';
+    block.style.padding = '6px';
     block.style.border = '1px solid #444';
     block.style.width = '320px';
     block.style.textAlign = 'center';
-    block.style.background = '#111';
-    block.style.color = 'white';
-    block.style.padding = '4px';
     block.textContent = cam.label || `Camera ${i + 1}`;
 
     const v = document.createElement('video');
@@ -178,7 +172,6 @@ async function showAllCameras() {
     }
   }
 
-  countDiv.textContent = '';
   log("📺 Showing all cameras (no detection)");
 }
 
