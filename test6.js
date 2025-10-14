@@ -1,4 +1,4 @@
-// Δουλεύει για μία κάμερα ή για όλες μαζί (χωρίς μάσκα στις πολλές)
+// Doulevei kanonika gia screen share. Doulevei gia camera me maska otan einai mia mia h kamera. Otan deixnei olew tis kameres mazi den deixnei maskes gia logous poluplokothtas.
 const video = document.createElement('video');
 video.autoplay = true;
 video.playsInline = true;
