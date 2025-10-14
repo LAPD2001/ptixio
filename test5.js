@@ -144,10 +144,10 @@ async function showAllCameras() {
   if (cameraContainer) cameraContainer.remove();
   cameraContainer = document.getElementById('cameraContainer');
   //cameraContainer.id = 'cameraContainer';
-  //cameraContainer.style.display = 'flex';
-  //cameraContainer.style.flexWrap = 'wrap';
-  //cameraContainer.style.gap = '10px';
-  //document.body.appendChild(cameraContainer);
+  σcameraContainer.style.display = 'flex';
+  cameraContainer.style.flexWrap = 'wrap';
+  cameraContainer.style.gap = '10px';
+  document.body.appendChild(cameraContainer);
 
   // ξεκινάμε όλες τις κάμερες
   for (let i = 0; i < cameras.length; i++) {
