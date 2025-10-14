@@ -32,7 +32,7 @@ function log(msg) {
 window.onload = init;
 
 async function init() {
-  useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.");
+  useScreen = confirm("Do you want to share your screen? Press 'Cancel' to use the camera.'");
 
   if (!useScreen) {
     await listCameras();
@@ -40,7 +40,9 @@ async function init() {
       alert("Δεν βρέθηκαν διαθέσιμες κάμερες.");
       return;
     }
-    await startCamera(cameras[0].deviceId);
+
+    // 🟢 Ξεκινάμε δείχνοντας όλες τις κάμερες
+    await showAllCameras();
   } else {
     log("📺 Using screen share...");
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -90,6 +92,8 @@ async function listCameras() {
   });
 
   if (cameras.length > 0) {
+    // 🟢 προεπιλογή: "All cameras"
+    cameraSelect.selectedIndex = 0;
     log("📷 Found " + cameras.length + " camera(s)");
   } else {
     log("⚠️ No cameras found");
