@@ -1,10 +1,11 @@
-//doulevei screen share kai cameras. Omos otan allazoume apo mia camera se all cameras tote emfanizetai ena mavro kouti logo display none sto canvas.
-
+// Δουλεύει για μία κάμερα ή για όλες μαζί (χωρίς μάσκα στις πολλές)
 const video = document.createElement('video');
 video.autoplay = true;
 video.playsInline = true;
 video.muted = true;
 video.style.display = 'none';
+let useScreen = false;
+
 document.body.appendChild(video);
 
 const canvasMask = document.getElementById('canvasMask');
@@ -16,16 +17,17 @@ const cameraContainer = document.getElementById('cameraContainer');
 
 let net;
 let stream;
-let useScreen = false;
 let cameras = [];
-let allStreams = [];
+let showingAll = false;
 
 // logging function
 function log(msg) {
   console.log(msg);
   logDiv.textContent += msg + "\n";
+  logDiv.scrollTop = logDiv.scrollHeight;
 }
 
+// αρχικοποίηση
 window.onload = init;
 
 async function init() {
@@ -37,8 +39,7 @@ async function init() {
       alert("Δεν βρέθηκαν διαθέσιμες κάμερες.");
       return;
     }
-    // προεπιλογή “All Cameras”
-    cameraSelect.value = "all";
+    // ξεκινάμε με “Show all cameras”
     await showAllCameras();
   } else {
     log("📺 Using screen share...");
@@ -48,11 +49,12 @@ async function init() {
   }
 
   cameraSelect.onchange = async () => {
-    const value = cameraSelect.value;
-    if (value === "all") {
+    if (useScreen) return;
+    const deviceId = cameraSelect.value;
+    if (deviceId === "all") {
       await showAllCameras();
     } else {
-      await startCamera(value);
+      await startCamera(deviceId);
     }
   };
 
@@ -62,17 +64,16 @@ async function init() {
   detect();
 }
 
-// λήψη λίστας καμερών
+// λίστα καμερών
 async function listCameras() {
   await navigator.mediaDevices.getUserMedia({ video: true });
   const devices = await navigator.mediaDevices.enumerateDevices();
   cameras = devices.filter(d => d.kind === 'videoinput');
-
   cameraSelect.innerHTML = '';
 
   const allOption = document.createElement('option');
-  allOption.value = "all";
-  allOption.textContent = "All Cameras";
+  allOption.value = 'all';
+  allOption.textContent = '📹 Show all cameras';
   cameraSelect.appendChild(allOption);
 
   cameras.forEach((device, index) => {
@@ -84,96 +85,98 @@ async function listCameras() {
 
   if (cameras.length > 0) {
     log("📷 Found " + cameras.length + " camera(s)");
-    cameras.forEach((c, i) => log(`   ${i + 1}. ${c.label || c.deviceId}`));
   } else {
     log("⚠️ No cameras found");
   }
 }
 
-// εκκίνηση μιας κάμερας
+// εκκίνηση μίας κάμερας (με μάσκα)
 async function startCamera(deviceId) {
-  try {
-    // καθάρισε προηγούμενα
-    if (stream) stream.getTracks().forEach(track => track.stop());
-    cameraContainer.innerHTML = '';
+  showingAll = false;
+  cameraContainer.innerHTML = ''; // καθαρίζουμε container
 
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: deviceId } },
-      audio: false
-    });
-
-    video.srcObject = stream;
-    await video.play();
-
-    canvasMask.style.display = 'block';
-    log("🎥 Camera started successfully");
-  } catch (err) {
-    log("❌ Error starting camera: " + err.message);
-  }
-}
-
-// εμφάνιση όλων των καμερών
-async function showAllCameras() {
+  // σταματάμε ό,τι υπάρχει
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
   }
-  cameraContainer.innerHTML = '';
-  allStreams.forEach(s => s.getTracks().forEach(t => t.stop()));
-  allStreams = [];
 
-  const cols = Math.ceil(Math.sqrt(cameras.length));
-  const size = 240;
+  // παίρνουμε το stream
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { deviceId: { exact: deviceId } },
+    audio: false
+  });
 
-  canvasMask.width = cols * size;
-  canvasMask.height = cols * size;
-  ctxMask.fillStyle = "black";
-  ctxMask.fillRect(0, 0, canvasMask.width, canvasMask.height);
+  video.srcObject = stream;
+  await video.play();
 
-  let x = 0, y = 0;
+  // εμφανίζουμε το canvas (μάσκα)
+  canvasMask.style.display = 'block';
+  log("🎥 Camera started: " + deviceId);
+}
 
-  for (const cam of cameras) {
+// δείχνει όλες τις κάμερες χωρίς μάσκα
+async function showAllCameras() {
+  showingAll = true;
+
+  // σταματάμε ό,τι άλλο υπάρχει
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+
+  // κρύβουμε τη μάσκα
+  ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+  canvasMask.style.display = 'none';
+
+  // καθαρίζουμε και προσθέτουμε τίτλο
+  cameraContainer.innerHTML = "<h3>All cameras view (no detection active)</h3>";
+
+  // ξεκινάμε όλες τις κάμερες
+  for (let i = 0; i < cameras.length; i++) {
+    const cam = cameras[i];
+
+    const block = document.createElement('div');
+    block.style.display = 'inline-block';
+    block.style.margin = '6px';
+    block.style.padding = '6px';
+    block.style.border = '1px solid #444';
+    block.style.width = '320px';
+    block.style.textAlign = 'center';
+    block.textContent = cam.label || `Camera ${i + 1}`;
+
+    const v = document.createElement('video');
+    v.autoplay = true;
+    v.playsInline = true;
+    v.muted = true;
+    v.style.width = '100%';
+    v.style.marginTop = '4px';
+    block.appendChild(v);
+    cameraContainer.appendChild(block);
+
     try {
       const s = await navigator.mediaDevices.getUserMedia({
         video: { deviceId: { exact: cam.deviceId } },
         audio: false
       });
-      allStreams.push(s);
-      const v = document.createElement('video');
       v.srcObject = s;
-      await v.play();
-
-      // σχεδίαση κάθε video μέσα στο main canvas
-      const drawFrame = () => {
-        if (v.readyState >= 2) {
-          ctxMask.drawImage(v, x * size, y * size, size, size);
-        }
-        requestAnimationFrame(drawFrame);
-      };
-      drawFrame();
-
-      x++;
-      if (x >= cols) {
-        x = 0;
-        y++;
-      }
-    } catch (e) {
-      log("⚠️ Error opening camera: " + e.message);
+    } catch (err) {
+      block.textContent = "❌ " + (err.message || err);
     }
   }
 
-  countDiv.textContent = "All cameras shown (no mask)";
+  log("📺 Showing all cameras (no detection)");
 }
 
 // BodyPix detect
 async function detect() {
-  if (!net || !video.videoWidth) {
+  if (showingAll) {
     requestAnimationFrame(detect);
     return;
   }
 
-  if (cameraSelect.value === "all") {
+  if (!net || !video.videoWidth) {
     requestAnimationFrame(detect);
-    return; // δεν βάζουμε μασκα όταν δείχνουμε όλες
+    return;
   }
 
   try {
