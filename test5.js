@@ -51,8 +51,12 @@ async function init() {
   cameraSelect.onchange = async () => {
     if (useScreen) return;
     const deviceId = cameraSelect.value;
-    log("🔄 Switching to camera: " + deviceId);
-    await startCamera(deviceId);
+    log("🔄 Selected: " + deviceId);
+    if (deviceId === "all") {
+      await showAllCameras();
+    } else {
+      await startCamera(deviceId);
+    }
   };
 
   net = await bodyPix.load();
@@ -67,6 +71,12 @@ async function listCameras() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   cameras = devices.filter(d => d.kind === 'videoinput');
   cameraSelect.innerHTML = '';
+
+  // προσθέτουμε επιλογή "Όλες οι κάμερες"
+  const allOption = document.createElement('option');
+  allOption.value = "all";
+  allOption.textContent = "📷 Όλες οι κάμερες";
+  cameraSelect.appendChild(allOption);
 
   cameras.forEach((device, index) => {
     const option = document.createElement('option');
@@ -121,6 +131,7 @@ async function showAllCameras() {
 
   // κρύβουμε τη μάσκα
   ctxMask.clearRect(0, 0, canvasMask.width, canvasMask.height);
+  countDiv.textContent = '';
 
   // φτιάχνουμε container
   if (cameraContainer) cameraContainer.remove();
