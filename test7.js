@@ -1,65 +1,56 @@
+let bodyPixNet;
 let currentStream = null;
-let video = document.createElement("video");
-let canvas = document.createElement("canvas");
-let ctx = canvas.getContext("2d");
-let bodyPixNet = null;
 let cameras = [];
 let detectionActive = false;
 
 const select = document.getElementById("cameraSelect");
-const logBox = document.getElementById("log");
-const videoContainer = document.getElementById("videoContainer");
+const logDiv = document.getElementById("log");
+const cameraContainer = document.getElementById("cameraContainer");
+const canvasMask = document.getElementById("canvasMask");
+const ctx = canvasMask.getContext("2d");
 
-function log(msg, color = "white") {
+function log(msg, color = "#0f0") {
   const line = document.createElement("div");
   line.style.color = color;
   line.textContent = msg;
-  logBox.appendChild(line);
-  logBox.scrollTop = logBox.scrollHeight;
+  logDiv.appendChild(line);
+  logDiv.scrollTop = logDiv.scrollHeight;
 }
-
-// 🔹 Εμφανίζει μήνυμα στην αρχή
-log("🔍 Initializing camera system...");
 
 // 🔹 Φόρτωση BodyPix
 async function loadBodyPix() {
-  log("Loading BodyPix model...");
+  log("Loading BodyPix...");
   bodyPixNet = await bodyPix.load();
-  log("✅ BodyPix model loaded", "lightgreen");
+  log("✅ BodyPix loaded.");
 }
 
-// 🔹 Λήψη λίστας καμερών
+// 🔹 Λήψη όλων των καμερών
 async function getCameras() {
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    cameras = devices.filter((d) => d.kind === "videoinput");
-    log(`📸 Found ${cameras.length} camera(s)`, "lightgreen");
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  cameras = devices.filter(d => d.kind === "videoinput");
 
-    select.innerHTML = "";
-    const allOption = document.createElement("option");
-    allOption.value = "all";
-    allOption.textContent = "Show all cameras";
-    select.appendChild(allOption);
+  select.innerHTML = "";
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "All cameras";
+  select.appendChild(allOption);
 
-    cameras.forEach((cam) => {
-      const opt = document.createElement("option");
-      opt.value = cam.deviceId;
-      opt.textContent = cam.label || `Camera ${select.length}`;
-      select.appendChild(opt);
-    });
+  cameras.forEach((cam, i) => {
+    const opt = document.createElement("option");
+    opt.value = cam.deviceId;
+    opt.textContent = cam.label || `Camera ${i + 1}`;
+    select.appendChild(opt);
+  });
 
-    select.value = "all";
-    showAllCameras();
-  } catch (err) {
-    log(`❌ Error getting cameras: ${err.message}`, "red");
-  }
+  select.value = "all";
+  showAllCameras();
 }
 
-// 🔹 Εμφάνιση όλων των καμερών χωρίς αναγνώριση
+// 🔹 Δείξε όλες τις κάμερες (χωρίς ανίχνευση)
 async function showAllCameras() {
   detectionActive = false;
-  videoContainer.innerHTML = "";
-  log("🟢 Showing all cameras (no detection)", "lightgreen");
+  cameraContainer.innerHTML = "";
+  canvasMask.style.display = "none";
 
   for (const cam of cameras) {
     try {
@@ -75,88 +66,71 @@ async function showAllCameras() {
       v.height = 240;
       v.srcObject = stream;
 
-      const box = document.createElement("div");
-      box.style.display = "inline-block";
-      box.style.margin = "10px";
-      box.style.border = "1px solid #888";
-      box.style.textAlign = "center";
-      const label = document.createElement("div");
-      label.textContent = cam.label || "Unnamed Camera";
-      label.style.fontWeight = "bold";
-      box.appendChild(label);
-      box.appendChild(v);
-      videoContainer.appendChild(box);
+      const wrapper = document.createElement("div");
+      wrapper.appendChild(v);
+      cameraContainer.appendChild(wrapper);
     } catch (err) {
-      log(`⚠️ Could not open ${cam.label}: ${err.message}`, "orange");
+      log(`⚠️ Could not open camera: ${err.message}`, "orange");
     }
   }
 }
 
-// 🔹 Εμφάνιση μίας κάμερας με αναγνώριση
+// 🔹 Δείξε μία κάμερα με ανίχνευση
 async function showSingleCamera(deviceId) {
   detectionActive = true;
-  videoContainer.innerHTML = "";
-  log("🎯 Showing single camera with detection", "lightgreen");
+  cameraContainer.innerHTML = "";
+  canvasMask.style.display = "block";
 
-  // Αν υπάρχει προηγούμενο stream, σταματάμε
   if (currentStream) {
-    currentStream.getTracks().forEach((t) => t.stop());
+    currentStream.getTracks().forEach(t => t.stop());
   }
 
   try {
     const constraints = {
       video: deviceId
         ? { deviceId: { exact: deviceId } }
-        : { facingMode: { exact: "environment" } },
+        : { facingMode: "environment" },
       audio: false,
     };
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     currentStream = stream;
 
-    video.srcObject = stream;
+    const video = document.createElement("video");
     video.autoplay = true;
     video.muted = true;
     video.playsInline = true;
-    video.width = 640;
-    video.height = 480;
-    videoContainer.appendChild(video);
-    videoContainer.appendChild(canvas);
+    video.srcObject = stream;
+    cameraContainer.appendChild(video);
 
-    detectLoop();
+    video.addEventListener("loadeddata", () => detectLoop(video));
   } catch (err) {
-    log(`❌ Camera error: ${err.name} - ${err.message}`, "red");
+    log(`❌ Camera error: ${err.message}`, "red");
   }
 }
 
-// 🔹 Επανάληψη detection
-async function detectLoop() {
-  if (!detectionActive) return;
+// 🔹 Loop ανίχνευσης
+async function detectLoop(video) {
+  if (!detectionActive || !bodyPixNet) return;
+  canvasMask.width = video.videoWidth;
+  canvasMask.height = video.videoHeight;
 
-  if (video.readyState === 4 && bodyPixNet) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+  const segmentation = await bodyPixNet.segmentPerson(video);
+  const mask = bodyPix.toMask(segmentation);
 
-    const segmentation = await bodyPixNet.segmentPerson(video);
-    const colored = bodyPix.toMask(segmentation);
-
-    ctx.putImageData(colored, 0, 0);
-  }
-  requestAnimationFrame(detectLoop);
+  ctx.putImageData(mask, 0, 0);
+  requestAnimationFrame(() => detectLoop(video));
 }
 
-// 🔹 Αν αλλάξει η επιλογή κάμερας
-select.addEventListener("change", async () => {
-  const selected = select.value;
-  if (selected === "all") {
-    showAllCameras();
-  } else {
-    showSingleCamera(selected);
-  }
+// 🔹 Όταν αλλάζει επιλογή στο select
+select.addEventListener("change", () => {
+  const id = select.value;
+  if (id === "all") showAllCameras();
+  else showSingleCamera(id);
 });
 
 // 🔹 Εκκίνηση
-(async function init() {
+(async () => {
   await loadBodyPix();
   await getCameras();
 })();
