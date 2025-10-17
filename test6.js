@@ -98,6 +98,7 @@ async function startCamera(deviceId) {
   // σταματάμε ό,τι υπάρχει
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
+    stream = null;
   }
 
   // παίρνουμε το stream
