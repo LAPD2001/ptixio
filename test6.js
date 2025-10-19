@@ -56,24 +56,26 @@ async function init() {
 
     // Συνδέουμε το stream με το video και το δείχνουμε
     video.srcObject = stream;
-    video.width = 1280;
-    video.height = 720;
     video.style.display = "block";
+    video.style.maxWidth = "640px"; 
+    video.style.border = "1px solid #444";
     document.body.appendChild(video);
 
-    await video.play();
+    // Περιμένουμε να φορτώσει πλήρως
+    await new Promise(resolve => {
+      video.onloadedmetadata = () => {
+        video.play();
+        // Τώρα ξέρουμε τις πραγματικές διαστάσεις
+        canvasMask.width = video.videoWidth;
+        canvasMask.height = video.videoHeight;
+        canvasMask.style.display = "block";
+        canvasMask.style.maxWidth = "640px"; // ίδια εμφάνιση με το video
+        resolve();
+      };
+    });
 
-    canvasMask.width = video.videoWidth;
-    canvasMask.height = video.videoHeight;
-
-    // Ρυθμίζουμε τον καμβά ώστε να έχει το ίδιο μέγεθος με το video
-    video.onloadedmetadata = () => {
-      canvasMask.width = video.videoWidth;
-      canvasMask.height = video.videoHeight;
-      canvasMask.style.display = "block";
-    };
-
-//////////////////////////////////////////////////////////////
+    log(`🎬 Screen share resolution: ${video.videoWidth}x${video.videoHeight}`);
+/////////////////////////////////////////////////////////////  
   }
 
   cameraSelect.onchange = async () => {
