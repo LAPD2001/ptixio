@@ -1,12 +1,12 @@
 // Δουλεύει κανονικά για screen share & κάμερα με μάσκα.
 // Όταν δείχνει όλες τις κάμερες μαζί, δεν εφαρμόζει μάσκες.
-const video = document.createElement('video');
-video.autoplay = false;
-video.playsInline = false;
-video.muted = true;
-video.style.display = 'none';
-video.display = 'none';
-let useScreen = false;
+const video=null;// = document.createElement('video');
+// video.autoplay = false;
+// video.playsInline = false;
+// video.muted = true;
+// video.style.display = 'none';
+// video.display = 'none';
+// let useScreen = false;
 
 document.body.appendChild(video);
 
