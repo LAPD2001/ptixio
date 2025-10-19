@@ -91,15 +91,6 @@ async function init() {
   net = await bodyPix.load();
   log("✅ BodyPix model loaded");
 
-
-  await new Promise(resolve => {
-  if (video.readyState >= 2) resolve();
-  else video.onloadeddata = () => resolve();
-});
-
-log(`Starting detection on ${useScreen ? "screen share" : "camera"}...`);
-
-
   detect();
 }
 
