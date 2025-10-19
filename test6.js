@@ -42,10 +42,27 @@ async function init() {
     // ξεκινάμε με “Show all cameras”
     await showAllCameras();
   } else {
+/////////////////////////////////////////////////////////////
     log("📺 Using screen share...");
+
+    // Παίρνουμε το stream της οθόνης
     stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+
+    // Συνδέουμε το stream με το video και το δείχνουμε
     video.srcObject = stream;
+    video.style.display = "block";
+    document.body.appendChild(video);
+
     await video.play();
+
+    // Ρυθμίζουμε τον καμβά ώστε να έχει το ίδιο μέγεθος με το video
+    video.onloadedmetadata = () => {
+      canvasMask.width = video.videoWidth;
+      canvasMask.height = video.videoHeight;
+      canvasMask.style.display = "block";
+    };
+
+//////////////////////////////////////////////////////////////
   }
 
   cameraSelect.onchange = async () => {
