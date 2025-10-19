@@ -46,14 +46,25 @@ async function init() {
     log("📺 Using screen share...");
 
     // Παίρνουμε το stream της οθόνης
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        width: 1280,
+        height: 720,
+        frameRate: 30
+      }
+    });
 
     // Συνδέουμε το stream με το video και το δείχνουμε
     video.srcObject = stream;
+    video.width = 1280;
+    video.height = 720;
     video.style.display = "block";
     document.body.appendChild(video);
 
     await video.play();
+
+    canvasMask.width = video.videoWidth;
+    canvasMask.height = video.videoHeight;
 
     // Ρυθμίζουμε τον καμβά ώστε να έχει το ίδιο μέγεθος με το video
     video.onloadedmetadata = () => {
