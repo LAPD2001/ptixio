@@ -1,8 +1,8 @@
-// ✅ Δουλεύει κανονικά για screen share & κάμερα με μάσκα.
+// Δουλεύει κανονικά για screen share & κάμερα με μάσκα.
 // Όταν δείχνει όλες τις κάμερες μαζί, δεν εφαρμόζει μάσκες.
 const video = document.createElement('video');
-video.autoplay = true;
-video.playsInline = true;
+video.autoplay = false;
+video.playsInline = false;
 video.muted = true;
 video.style.display = 'none';
 video.display = 'none';
