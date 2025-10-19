@@ -8,7 +8,7 @@ const video=null;// = document.createElement('video');
 // video.display = 'none';
 // let useScreen = false;
 
-document.body.appendChild(video);
+//document.body.appendChild(video);
 
 const canvasMask = document.getElementById('canvasMask');
 const ctxMask = canvasMask.getContext('2d');
@@ -58,7 +58,7 @@ async function init() {
     //video.style.display = "block";
     //video.style.maxWidth = "640px";
     //video.style.border = "1px solid #444";
-    document.body.appendChild(video);
+    //document.body.appendChild(video);
 
     // 👉 Περιμένουμε να φορτωθεί το video
     await new Promise(resolve => {
