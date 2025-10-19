@@ -5,6 +5,7 @@ video.autoplay = true;
 video.playsInline = true;
 video.muted = true;
 video.style.display = 'none';
+video.display = 'none';
 let useScreen = false;
 
 document.body.appendChild(video);
