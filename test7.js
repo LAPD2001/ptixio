@@ -55,15 +55,15 @@ async function init() {
     });
 
     video.srcObject = stream;
-    video.style.display = "block";
-    video.style.maxWidth = "640px";
-    video.style.border = "1px solid #444";
+    //video.style.display = "block";
+    //video.style.maxWidth = "640px";
+    //video.style.border = "1px solid #444";
     document.body.appendChild(video);
 
     // 👉 Περιμένουμε να φορτωθεί το video
     await new Promise(resolve => {
       video.onloadedmetadata = () => {
-        video.play();
+        //video.play();
         canvasMask.width = video.videoWidth;
         canvasMask.height = video.videoHeight;
         canvasMask.style.display = "block";
