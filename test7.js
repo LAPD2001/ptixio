@@ -63,7 +63,7 @@ async function init() {
     // 👉 Περιμένουμε να φορτωθεί το video
     await new Promise(resolve => {
       video.onloadedmetadata = () => {
-        //video.play();
+        video.play();
         canvasMask.width = video.videoWidth;
         canvasMask.height = video.videoHeight;
         canvasMask.style.display = "block";
