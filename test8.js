@@ -1,5 +1,7 @@
-// test7.js — robust camera start (tries fallbacks) + BodyPix integration
-// Προϋποθέσεις: στο HTML υπάρχουν elements με ids: cameraSelect, log, cameraContainer, canvasMask, count
+// test7_robust_cycle.js
+// Πιο επιθετική/αναλυτική προσπάθεια για να ανοίξει πίσω κάμερα σε κινητό.
+// HTML: needs elements with ids: cameraSelect, log, cameraContainer, canvasMask, count
+// Run on HTTPS for mobile browsers.
 
 const video = document.createElement('video');
 video.autoplay = true;
@@ -8,29 +10,27 @@ video.muted = true;
 video.style.display = 'none';
 document.body.appendChild(video);
 
-const canvasMask = document.getElementById('canvasMask');
-const ctxMask = canvasMask.getContext('2d');
-const countDiv = document.getElementById('count');
 const cameraSelect = document.getElementById('cameraSelect');
 const logDiv = document.getElementById('log');
 const cameraContainer = document.getElementById('cameraContainer');
+const canvasMask = document.getElementById('canvasMask');
+const countDiv = document.getElementById('count');
 
 let net = null;
 let currentStream = null;
 let cameras = [];
-let showingAll = false;
 
 function log(msg, level = 'info') {
-  const p = document.createElement('div');
-  p.textContent = msg;
-  if (level === 'error') p.style.color = '#f66';
-  else if (level === 'warn') p.style.color = '#f90';
-  else p.style.color = '#0f0';
-  logDiv.appendChild(p);
+  const el = document.createElement('div');
+  el.textContent = msg;
+  if (level === 'error') el.style.color = '#f66';
+  else if (level === 'warn') el.style.color = '#f90';
+  else el.style.color = '#0f0';
+  logDiv.appendChild(el);
   logDiv.scrollTop = logDiv.scrollHeight;
+  console.log(msg);
 }
 
-// Βοηθητική: σταμάτησε stream
 function stopStream(s) {
   if (!s) return;
   try {
@@ -38,39 +38,16 @@ function stopStream(s) {
   } catch (e) { /* ignore */ }
 }
 
-// Ανιχνεύει αν είναι κινητό
 function isMobile() {
   return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-// Προσπάθειες για να ανοίξουμε stream με fallback
-async function tryGetStream({ deviceId = null, facing = null } = {}) {
-  // sequence of constraints to try (ordered)
-  const attempts = [];
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // 1) If deviceId provided, try exact deviceId
-  if (deviceId) {
-    attempts.push({ video: { deviceId: { exact: deviceId } }, audio: false });
-  }
-
-  // 2) If facing provided, try exact facingMode
-  if (facing) {
-    attempts.push({ video: { facingMode: { exact: facing } }, audio: false });
-  }
-
-  // 3) Try facingMode without exact (more relaxed)
-  if (facing) {
-    attempts.push({ video: { facingMode: facing }, audio: false });
-  }
-
-  // 4) Try a generic video constraint (let browser choose)
-  attempts.push({ video: true, audio: false });
-
-  // 5) Try small resolution hint (to support restrictive devices)
-  attempts.push({ video: { width: { ideal: 640 }, height: { ideal: 360 } }, audio: false });
-
+// try a list of constraints and return stream or throw
+async function tryConstraintsList(constraintsList) {
   let lastError = null;
-  for (const c of attempts) {
+  for (const c of constraintsList) {
     try {
       log(`Attempting getUserMedia with: ${JSON.stringify(c.video)}`);
       const s = await navigator.mediaDevices.getUserMedia(c);
@@ -78,223 +55,195 @@ async function tryGetStream({ deviceId = null, facing = null } = {}) {
       return s;
     } catch (err) {
       lastError = err;
-      log(`✖ getUserMedia failed: ${err.name} - ${err.message}`, 'warn');
-      // If OverconstrainedError or NotAllowedError or NotFoundError, continue to next attempt
-      // but if NotAllowedError, user denied permissions — stop trying further
+      log(`✖ failed: ${err.name} — ${err.message}`, 'warn');
+      // If user denied permanently, rethrow to stop attempts
       if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
-        throw err; // user denied — surface it
+        throw err;
       }
+      // small delay then continue trying other constraints
+      await sleep(200);
     }
   }
-
-  throw lastError || new Error('getUserMedia failed (no attempts left)');
+  throw lastError || new Error('All getUserMedia attempts failed');
 }
 
-// Λίστα καμερών
-async function listCameras() {
+async function refreshDeviceList() {
   try {
-    // Ensure permission to get labels on devices
-    try { await navigator.mediaDevices.getUserMedia({ video: true }); } catch(e) { /* ignore */ }
-
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    cameras = devices.filter(d => d.kind === 'videoinput');
+    // try to get permission to reveal labels
+    try { await navigator.mediaDevices.getUserMedia({video:true}); } catch(e){ /* ignore */ }
+    const list = await navigator.mediaDevices.enumerateDevices();
+    cameras = list.filter(d => d.kind === 'videoinput');
     cameraSelect.innerHTML = '';
-
-    // προσθέτω "all" ως πρώτη επιλογή
     const allOpt = document.createElement('option');
     allOpt.value = 'all';
-    allOpt.textContent = '📷 All cameras';
+    allOpt.textContent = 'All cameras';
     cameraSelect.appendChild(allOpt);
-
     cameras.forEach((c, i) => {
       const opt = document.createElement('option');
       opt.value = c.deviceId;
       opt.textContent = c.label || `Camera ${i+1}`;
       cameraSelect.appendChild(opt);
     });
-
     log(`Found ${cameras.length} camera(s)`);
   } catch (err) {
-    log('Error listing cameras: ' + (err.message || err), 'error');
+    log('Error enumerating devices: ' + (err.message||err), 'error');
   }
 }
 
-// show all cameras (no detection)
-async function showAllCameras() {
-  showingAll = true;
-  // stop single stream
+async function openSingleCameraWithFallback(deviceId = null) {
+  // stop prior
   stopStream(currentStream);
   currentStream = null;
-
-  // hide mask canvas
-  canvasMask.style.display = 'none';
-  ctxMask.clearRect(0,0,canvasMask.width, canvasMask.height);
-
-  cameraContainer.innerHTML = '<h3>All cameras view (no detection)</h3>';
-  // open each camera (may fail for some)
-  for (const cam of cameras) {
-    const wrapper = document.createElement('div');
-    wrapper.style.display = 'inline-block';
-    wrapper.style.margin = '6px';
-    wrapper.style.width = '320px';
-    wrapper.style.textAlign = 'center';
-    const label = document.createElement('div');
-    label.textContent = cam.label || 'Unnamed';
-    wrapper.appendChild(label);
-
-    const v = document.createElement('video');
-    v.autoplay = true; v.muted = true; v.playsInline = true;
-    v.style.width = '100%';
-    wrapper.appendChild(v);
-    cameraContainer.appendChild(wrapper);
-
-    try {
-      const s = await tryGetStream({ deviceId: cam.deviceId });
-      v.srcObject = s;
-    } catch (err) {
-      label.textContent = `❌ ${err.name || ''} ${err.message || ''}`;
-    }
-  }
-}
-
-// start single camera (with mask/detection)
-// deviceId may be null (in which case we try facingMode environment)
-async function startCamera(deviceId) {
-  showingAll = false;
   cameraContainer.innerHTML = '';
-  // stop previous
-  stopStream(currentStream);
-  currentStream = null;
+  canvasMask.style.display = 'none';
 
-  // choose facing if mobile and deviceId seems to indicate back
-  let facingHint = null;
-  if (isMobile()) {
-    // try guess facing from label if available
-    const camObj = cameras.find(c => c.deviceId === deviceId);
-    const label = camObj ? (camObj.label || '').toLowerCase() : '';
-    if (label.includes('back') || label.includes('rear') || label.includes('environment')) facingHint = 'environment';
-    else if (label.includes('front') || label.includes('user') || label.includes('selfie')) facingHint = 'user';
+  // build prioritized constraints list
+  const list = [];
+
+  if (deviceId) {
+    // desktop-friendly attempt
+    list.push({video: { deviceId: { exact: deviceId } }, audio:false});
   }
+
+  // try exact facing if mobile
+  list.push({video: { facingMode: { exact: 'environment' } }, audio:false});
+  // relaxed facing
+  list.push({video: { facingMode: 'environment' }, audio:false});
+  // generic
+  list.push({video: true, audio:false});
+  // small resolution hint
+  list.push({video: { width: { ideal: 640 }, height: { ideal: 360 } }, audio:false});
 
   try {
-    // Try best: if desktop prefer deviceId, if mobile prefer facing
-    let stream;
-    if (!isMobile() && deviceId) {
-      // desktop: try deviceId first, fallback inside tryGetStream
-      stream = await tryGetStream({ deviceId });
-    } else {
-      // mobile or no deviceId: try facing then deviceId fallback
-      if (facingHint) {
-        try {
-          stream = await tryGetStream({ facing: facingHint });
-        } catch (e) {
-          // fallback: try deviceId if provided
-          if (deviceId) stream = await tryGetStream({ deviceId });
-          else stream = await tryGetStream({});
-        }
-      } else {
-        // unknown: try facing environment first (common need)
-        try {
-          stream = await tryGetStream({ facing: 'environment' });
-        } catch (e) {
-          if (deviceId) stream = await tryGetStream({ deviceId });
-          else stream = await tryGetStream({});
-        }
-      }
-    }
-
-    // attach
-    currentStream = stream;
-    video.srcObject = stream;
-    // ensure hidden or not shown (canvas is visible)
+    const s = await tryConstraintsList(list);
+    currentStream = s;
+    video.srcObject = s;
+    // keep video hidden (canvas will display)
     video.style.display = 'none';
-    await video.play();
-
-    // set canvas size to video size (wait small time if not ready)
+    await video.play().catch(()=>{});
+    // wait until video has size
     await new Promise(resolve => {
       if (video.readyState >= 2 && video.videoWidth && video.videoHeight) resolve();
       else {
         const onLoaded = () => { video.removeEventListener('loadeddata', onLoaded); resolve(); };
         video.addEventListener('loadeddata', onLoaded);
         // safety timeout
-        setTimeout(resolve, 1000);
+        setTimeout(resolve, 1200);
       }
     });
 
-    canvasMask.width = video.videoWidth;
-    canvasMask.height = video.videoHeight;
+    canvasMask.width = video.videoWidth || 640;
+    canvasMask.height = video.videoHeight || 360;
     canvasMask.style.display = 'block';
-    log('Camera started and ready: ' + (deviceId || 'facing/auto'));
+    log(`Started camera (stream size: ${canvasMask.width}x${canvasMask.height})`);
+    return true;
   } catch (err) {
-    log('❌ could not start camera: ' + (err.name || '') + ' ' + (err.message || ''), 'error');
+    log('Final open camera error: ' + (err.name||'') + ' ' + (err.message||''), 'error');
+    return false;
   }
 }
 
-// detection loop (BodyPix)
+async function showAllCamerasSimple() {
+  // stop single stream
+  stopStream(currentStream);
+  currentStream = null;
+  canvasMask.style.display = 'none';
+  cameraContainer.innerHTML = '<h3>All cameras (no detection)</h3>';
+  for (const cam of cameras) {
+    const wrapper = document.createElement('div');
+    wrapper.style.display = 'inline-block';
+    wrapper.style.width = '320px';
+    wrapper.style.margin = '6px';
+    const lab = document.createElement('div'); lab.textContent = cam.label || 'Unnamed';
+    wrapper.appendChild(lab);
+    const v = document.createElement('video');
+    v.autoplay = true; v.muted = true; v.playsInline = true;
+    v.style.width = '100%';
+    wrapper.appendChild(v);
+    cameraContainer.appendChild(wrapper);
+    try {
+      const s = await tryConstraintsList([{video:{deviceId:{exact:cam.deviceId}}, audio:false}, {video:true, audio:false}]);
+      v.srcObject = s;
+    } catch (err) {
+      lab.textContent = `❌ ${err.name||''} ${err.message||''}`;
+    }
+  }
+}
+
+// cycle through devices attempting to open each and report results
+async function cycleCamerasTest() {
+  log('--- Cycle cameras test starting ---');
+  for (const cam of cameras) {
+    log(`Testing device: ${cam.label || cam.deviceId}`);
+    const ok = await openSingleCameraWithFallback(cam.deviceId);
+    log(`Result for ${cam.label || cam.deviceId}: ${ok ? 'OK' : 'FAILED'}`);
+    // display result snapshot
+    await sleep(700);
+    stopStream(currentStream);
+    currentStream = null;
+    await sleep(300);
+  }
+  log('--- Cycle cameras test finished ---');
+}
+
+// detection loop (BodyPix) — simple
 async function detectLoop() {
-  if (!net) {
-    requestAnimationFrame(detectLoop);
-    return;
-  }
-  if (showingAll) {
-    requestAnimationFrame(detectLoop);
-    return;
-  }
-  if (!video.videoWidth || !video.videoHeight) {
-    requestAnimationFrame(detectLoop);
-    return;
-  }
+  if (!net) { requestAnimationFrame(detectLoop); return; }
+  if (!currentStream || !video.videoWidth || !video.videoHeight) { requestAnimationFrame(detectLoop); return; }
 
   try {
-    // ensure canvas matches video
+    // keep canvas size in sync
     if (canvasMask.width !== video.videoWidth || canvasMask.height !== video.videoHeight) {
       canvasMask.width = video.videoWidth;
       canvasMask.height = video.videoHeight;
     }
 
-    const segmentation = await net.segmentMultiPerson(video, { internalResolution: 'medium', segmentationThreshold: 0.7, maxDetections: 6 });
+    const segmentation = await net.segmentMultiPerson(video, { internalResolution: 'medium', segmentationThreshold: 0.7 });
     const mask = bodyPix.toMask(segmentation);
-    // draw mask over canvas; drawMask handles resizing, but we keep sizes aligned
     bodyPix.drawMask(canvasMask, video, mask, 0.6, 3, false);
-
     const count = Array.isArray(segmentation) ? segmentation.length : 0;
     countDiv.textContent = `Number of people: ${count}`;
   } catch (err) {
-    log('Detect error: ' + (err.message || err), 'warn');
+    log('Detect error: ' + (err.message||err), 'warn');
   }
 
   requestAnimationFrame(detectLoop);
 }
 
-// init overall
-async function initApp() {
-  try {
-    await listCameras();
-    cameraSelect.onchange = async () => {
-      const val = cameraSelect.value;
-      if (val === 'all') {
-        await showAllCameras();
-      } else {
-        await startCamera(val);
-      }
-    };
+// wire UI & init
+(async function init() {
+  await refreshDeviceList();
+  // add cycle button to help debugging
+  const btn = document.createElement('button');
+  btn.textContent = 'Cycle Cameras (debug)';
+  btn.onclick = cycleCamerasTest;
+  document.body.insertBefore(btn, cameraContainer);
 
-    // load BodyPix (do it once)
+  // add open-environment quick button
+  const envBtn = document.createElement('button');
+  envBtn.textContent = 'Try environment facing';
+  envBtn.onclick = async () => { await openSingleCameraWithFallback(null); };
+  document.body.insertBefore(envBtn, cameraContainer);
+
+  cameraSelect.onchange = async () => {
+    const val = cameraSelect.value;
+    if (val === 'all') {
+      await showAllCamerasSimple();
+    } else {
+      await openSingleCameraWithFallback(val);
+    }
+  };
+
+  // load BodyPix
+  try {
     net = await bodyPix.load();
     log('BodyPix loaded');
-
-    // default: "all" selected => showAllCameras
-    if (cameraSelect.options.length > 0) {
-      cameraSelect.value = 'all';
-      await showAllCameras();
-    }
-
-    // start detection loop
-    detectLoop();
   } catch (err) {
-    log('Init error: ' + (err.message || err), 'error');
+    log('BodyPix load error: ' + (err.message||err), 'error');
   }
-}
 
-// run
-initApp();
+  // default: select 'all'
+  cameraSelect.value = 'all';
+  await showAllCamerasSimple();
+  detectLoop();
+})();
