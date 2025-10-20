@@ -81,9 +81,14 @@ async function startCamera(deviceId) {
   showingAll = false;
   cameraContainer.innerHTML = '';
 
+  // Κλείνουμε την προηγούμενη κάμερα
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
+    stream = null;
   }
+
+  // 🕐 Μικρό διάλειμμα για να απελευθερωθεί πλήρως η συσκευή
+  await new Promise(r => setTimeout(r, 400));
 
   const cam = cameras.find(c => c.deviceId === deviceId);
   const isBack = cam && cam.label.toLowerCase().includes("back");
@@ -95,8 +100,11 @@ async function startCamera(deviceId) {
     stream = await navigator.mediaDevices.getUserMedia(constraints);
   } catch (err1) {
     log("⚠️ Exact device failed: " + err1.message);
+
+    // 🕐 Ακόμα ένα μικρό delay πριν το retry βοηθά σε κινητά (ιδίως Android)
+    await new Promise(r => setTimeout(r, 500));
+
     try {
-      // Δοκιμάζει με facingMode
       constraints = { video: { facingMode: isBack ? "environment" : "user" } };
       log("🔄 Retrying with facingMode: " + constraints.video.facingMode);
       stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -107,11 +115,21 @@ async function startCamera(deviceId) {
   }
 
   video.srcObject = stream;
+
+  await new Promise(resolve => {
+    video.onloadedmetadata = () => {
+      canvasMask.width = video.videoWidth;
+      canvasMask.height = video.videoHeight;
+      resolve();
+    };
+  });
+
   await video.play();
 
   canvasMask.style.display = 'block';
   log("✅ Camera started: " + (cam?.label || "unnamed"));
 }
+
 
 // Προβολή όλων των καμερών
 async function showAllCameras() {
