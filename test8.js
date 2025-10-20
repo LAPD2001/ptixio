@@ -128,22 +128,36 @@ async function startCamera(deviceId) {
   showingAll = false;
   cameraContainer.innerHTML = '';
 
-  if (stream) stream.getTracks().forEach(track => track.stop());
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+  }
 
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { deviceId: { exact: deviceId } },
-    audio: false
-  });
+  let constraints;
 
-  video.srcObject = stream;
-  await video.play();
+  // Αν είναι κινητό, χρησιμοποίησε facingMode
+  if (/Mobi|Android/i.test(navigator.userAgent)) {
+    if (deviceId.toLowerCase().includes("back") || deviceId.toLowerCase().includes("environment")) {
+      constraints = { video: { facingMode: { exact: "environment" } } };
+    } else {
+      constraints = { video: { facingMode: "user" } };
+    }
+  } else {
+    // Αν είναι desktop, χρησιμοποίησε κανονικά το deviceId
+    constraints = { video: { deviceId: { exact: deviceId } } };
+  }
 
-  // προσαρμογή canvas στο μέγεθος του video
-  canvasMask.width = video.videoWidth;
-  canvasMask.height = video.videoHeight;
-  canvasMask.style.display = 'block';
-  log("🎥 Camera started: " + deviceId);
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    await video.play();
+    canvasMask.style.display = 'block';
+    log("🎥 Camera started: " + deviceId);
+  } catch (err) {
+    log("❌ Error starting camera: " + err.message);
+    alert("Δεν ήταν δυνατή η πρόσβαση στην κάμερα: " + err.message);
+  }
 }
+
 
 // 🔹 Εμφάνιση όλων των καμερών χωρίς μάσκα
 async function showAllCameras() {
