@@ -81,39 +81,57 @@ async function startCamera(deviceId) {
   showingAll = false;
   cameraContainer.innerHTML = '';
 
-  // Κλείνουμε την προηγούμενη κάμερα
+  // Σταματάμε ό,τι υπήρχε πριν
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
     stream = null;
   }
 
-  // 🕐 Μικρό διάλειμμα για να απελευθερωθεί πλήρως η συσκευή
-  await new Promise(r => setTimeout(r, 400));
+  // Περιμένουμε λίγο για να “απελευθερωθεί” η κάμερα
+  await new Promise(r => setTimeout(r, 500));
 
   const cam = cameras.find(c => c.deviceId === deviceId);
-  const isBack = cam && cam.label.toLowerCase().includes("back");
+  const label = cam?.label?.toLowerCase() || '';
+  const isBack = label.includes('back') || label.includes('rear') || label.includes('environment');
 
-  let constraints = { video: { deviceId: { exact: deviceId } } };
+  log(`🎥 Starting camera: ${cam?.label || deviceId}`);
+  
+  let tried = [];
+  let success = false;
 
-  try {
-    log("🎥 Trying camera: " + (cam?.label || "unknown"));
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-  } catch (err1) {
-    log("⚠️ Exact device failed: " + err1.message);
-
-    // 🕐 Ακόμα ένα μικρό delay πριν το retry βοηθά σε κινητά (ιδίως Android)
-    await new Promise(r => setTimeout(r, 500));
-
+  const tryConstraints = async (constraints, name) => {
     try {
-      constraints = { video: { facingMode: isBack ? "environment" : "user" } };
-      log("🔄 Retrying with facingMode: " + constraints.video.facingMode);
+      log(`🔧 Trying ${name}: ${JSON.stringify(constraints)}`);
       stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (err2) {
-      log("❌ All camera attempts failed: " + err2.message);
-      return;
+      success = true;
+      log(`✅ Success with ${name}`);
+    } catch (err) {
+      tried.push(`${name} → ${err.name}`);
+      log(`❌ Failed ${name}: ${err.message}`);
     }
+  };
+
+  // 🔹 1. Προσπαθούμε με το ακριβές deviceId
+  await tryConstraints({ video: { deviceId: { exact: deviceId } } }, "exact deviceId");
+
+  // 🔹 2. Αν αποτύχει, προσπαθούμε με facingMode
+  if (!success) {
+    await tryConstraints({ video: { facingMode: isBack ? "environment" : "user" } }, "facingMode");
   }
 
+  // 🔹 3. Αν ακόμα αποτύχει, fallback σε default κάμερα
+  if (!success) {
+    await tryConstraints({ video: true }, "default camera");
+  }
+
+  // Αν αποτύχουν όλα
+  if (!success) {
+    log("❌ Could not start any camera. Tried: " + tried.join(", "));
+    alert("Η κάμερα δεν μπορεί να ξεκινήσει. Ίσως χρησιμοποιείται από άλλη εφαρμογή.");
+    return;
+  }
+
+  // ✅ Επιτυχία
   video.srcObject = stream;
 
   await new Promise(resolve => {
@@ -127,8 +145,9 @@ async function startCamera(deviceId) {
   await video.play();
 
   canvasMask.style.display = 'block';
-  log("✅ Camera started: " + (cam?.label || "unnamed"));
+  log(`🎬 Camera active (${video.videoWidth}x${video.videoHeight})`);
 }
+
 
 
 // Προβολή όλων των καμερών
