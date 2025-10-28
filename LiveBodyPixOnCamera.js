@@ -1,6 +1,7 @@
-// Δουλεύει κανονικά για screen share & κάμερα με μάσκα.
-// Όταν δείχνει όλες τις κάμερες μαζί, δεν εφαρμόζει μάσκες.
-//Δεν δουλευει η πισω καμερα σε κινητα.
+// Doulevei kanonika gia screen share kai kamera me maska.
+// Mporei na deixnei kai oles tis kameres mazi (xoris maskes).
+//Prepei na exei https gia na doulepsei to getUserMedia kai to getDisplayMedia.
+//Den doulevei h piso kamera se kinita.
 
 const video= document.createElement('video');
  video.autoplay = false;
