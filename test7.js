@@ -24,14 +24,14 @@ let stream;
 let cameras = [];
 let showingAll = false;
 
-// 📜 Logging function
+// Logging function
 function log(msg) {
   console.log(msg);
   logDiv.textContent += msg + "\n";
   logDiv.scrollTop = logDiv.scrollHeight;
 }
 
-// 🔹 Έναρξη
+// Intialization
 window.onload = init;
 
 async function init() {
@@ -43,11 +43,11 @@ async function init() {
       alert("Δεν βρέθηκαν διαθέσιμες κάμερες.");
       return;
     }
-    await showAllCameras(); // προεπιλογή “Show all cameras”
+    await showAllCameras(); // proepilogh “Show all cameras”
   } else {
     log("📺 Using screen share...");
 
-    // 👉 Παίρνουμε το stream της οθόνης
+    // pairnoume to stream ths othonis
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         width: 1280,
@@ -62,7 +62,7 @@ async function init() {
     //video.style.border = "1px solid #444";
     //document.body.appendChild(video);
 
-    // 👉 Περιμένουμε να φορτωθεί το video
+    // perimenoume na fortosei to video
     await new Promise(resolve => {
       video.onloadedmetadata = () => {
         video.play();
@@ -77,6 +77,8 @@ async function init() {
     log(`🎬 Screen share resolution: ${video.videoWidth}x${video.videoHeight}`);
   }
 
+
+// Allagh kameras (select)
   cameraSelect.onchange = async () => {
     if (useScreen) return;
     const deviceId = cameraSelect.value;
@@ -90,7 +92,7 @@ async function init() {
   net = await bodyPix.load();
   log("✅ BodyPix model loaded");
 
-  // 🔹 Μόνο όταν είναι έτοιμο το video ξεκινάει η ανίχνευση
+  // Na ksekinaei h anixneush otan einai etoimo to video
   await new Promise(resolve => {
     if (video.readyState >= 2) resolve();
     else video.onloadeddata = () => resolve();
@@ -99,7 +101,7 @@ async function init() {
   detect();
 }
 
-// 🔹 Λίστα καμερών
+// Vriskoume th lista sindedemenon kameron
 async function listCameras() {
   await navigator.mediaDevices.getUserMedia({ video: true });
   const devices = await navigator.mediaDevices.enumerateDevices();
