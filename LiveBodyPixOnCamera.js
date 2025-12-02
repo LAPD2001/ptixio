@@ -271,7 +271,7 @@ async function detect() {
     const count = segmentation.length;
     countDiv.textContent = `Number of people: ${count}`;
   } catch (err) {
-    log("⚠️ Detect error: " + err.message);
+    //log("⚠️ Detect error: " + err.message);
   }
 
   // kalei ksana thn detect gia na ginetai sinexeia to detection, dld se kathe frame
