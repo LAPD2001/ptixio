@@ -1,7 +1,7 @@
 // Doulevei kanonika gia screen share kai kamera me maska.
 // Mporei na deixnei kai oles tis kameres mazi (xoris maskes).
 // Xreiazetai https gia na doulepsei (logo twn getUserMedia kai getDisplayMedia).
-// Den doulevei h piso kamera se kinita.
+// Den doulevei kapoies fores h piso kamera se kinita.
 
 
 // ftiaxniume to video sto opoio tha paizei to stream apo kamera h screen share
